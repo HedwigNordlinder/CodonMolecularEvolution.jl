@@ -21,6 +21,8 @@ export
     difFUBARTreesurgery,
     difFUBARTreesurgeryAndParallel,
     FUBAR,
-    smoothFUBAR
+    smoothFUBAR,
+    sim_alphabeta_seqs,
+    standard_tree_sim
 
 end
