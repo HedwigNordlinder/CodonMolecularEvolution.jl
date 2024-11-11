@@ -62,11 +62,10 @@ function FUBAR_grid(tree, GTRmat, F3x4_freqs, code; verbosity=1, grid_function =
 
             m = DiagonalizedCTMC(MolecularEvolution.MG94_F3x4(alpha, beta, GTRmat, F3x4_freqs))
             
-            if any(iscomplex,m)
+            if any(x -> imag(x) != 0, m)
                 println("Got complex numbers in Q matrix, retrying with GeneralCTMC")
                 m = GeneralCTMC(MolecularEvolution.MG94_F3x4(alpha, beta, GTRmat, F3x4_freqs))
             end
-
             felsenstein!(tree,m)
             combine!(tree.message[1],tree.parent_message[1])
             LL_matrix[i,:] .= MolecularEvolution.site_LLs(tree.message[1])
