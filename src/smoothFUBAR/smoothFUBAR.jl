@@ -98,13 +98,18 @@ function core_plots(ℓπ, samples, posterior_mean_θ, f, analysis_name, n_adapt
         savefig(analysis_name * "_log_posterior_trace_with_burnin.pdf")
     end
     all_theta_chains = stack([thetas(ℓπ, samples[s].z.θ) for s in (n_adapts+1):length(samples)])
-    essdf = DataFrame(ess(Chains(all_theta_chains', [Symbol("θ$(i)") for i in 1:size(all_theta_chains,1)])))[:,[:parameters,:ess]]
+    chains = Chains(all_theta_chains', [Symbol("θ$(i)") for i in 1:size(all_theta_chains,1)])
+    essdf = DataFrame(ess(chains))[:,[:parameters,:ess]]
     CSV.write(analysis_name * "_θ_ESS.csv", essdf)
     if plots
      inds_to_plot = sortperm(posterior_mean_θ, rev = true)[(1:(Int(sqrt(length(f.alpha_ind_vec))))).^2]
      plot(all_theta_chains[inds_to_plot,:]',
         legend = :none, alpha = 0.5, size = (700,350), xlabel = "Iterations")
      savefig(analysis_name * "_posterior_θ_trace.pdf")
+     acfdf = [values(DataFrame(autocor(chains, lags = 1:50))[1,:])...][2:50]
+     println(DataFrame(autocor(chains, lags = 1:50)))
+     bar(string.([(1:length(acfdf))...]),acfdf)
+     savefig(analysis_name*"_acf_1.pdf")
     end
 end
 
@@ -128,7 +133,7 @@ function smoothFUBAR(method::HMC_FUBAR, f::FUBARgrid, outpath;
     sigma = 0.03, HMC_samples = 500, n_adapts = 200, plots = true)
 
     if isodd(K)
-        error("Invalid K value: $K. K must be even.")
+        error("Invalid K value: $K. K must be an even number.")
     end
 
     exports && init_path(outpath)
