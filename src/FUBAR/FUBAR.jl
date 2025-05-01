@@ -73,10 +73,10 @@ end
 
 #Packaging "everything before the conditional likelihoods"
 function alphabetagrid(seqnames::Vector{String}, seqs, treestring::String;
-    verbosity=1, code=MolecularEvolution.universal_code, optimize_branch_lengths=false)
+    verbosity=1, code=MolecularEvolution.universal_code, optimize_branch_lengths=false, num_grid_points=20)
     tree = FUBAR_init(treestring, verbosity=verbosity)
     tree, alpha, beta, GTRmat, F3x4_freqs, eq_freqs = difFUBAR_global_fit_2steps(seqnames, seqs, tree, x -> x, code, verbosity=verbosity, optimize_branch_lengths=optimize_branch_lengths)
-    return FUBAR_grid(tree, GTRmat, F3x4_freqs, code, verbosity=verbosity)
+    return FUBAR_grid(tree, GTRmat, F3x4_freqs, code, verbosity=verbosity, num_grid_points=num_grid_points)
 end
 function init_path(analysis_name)
     splt = splitpath(analysis_name)[1:end-1]
