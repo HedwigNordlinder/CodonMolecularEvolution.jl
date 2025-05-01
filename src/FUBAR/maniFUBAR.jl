@@ -1,19 +1,3 @@
-"""
-    rmala_step_optimized(prob::RMALAProblem, μ, Σ; τμ=1e-2, τΣ=1e-2, 
-                        work_arrays=nothing)
-
-Optimized version of the RMALA step that reuses computations and reduces allocations.
-For large matrices (400x400), caches key computations and minimizes allocations.
-
-The optional work_arrays parameter can contain pre-allocated arrays to further reduce
-allocations during sampling.
-"""
-"""
-    RMALAProblem(grid, Σ0, ν0)
-
-Enhanced version of RMALAProblem that caches expensive computations.
-Highly recommended for 400x400 matrices to avoid redundant calculations.
-"""
 struct RMALAProblem
     grid::FUBARgrid
     Σ0::Matrix{Float64}
