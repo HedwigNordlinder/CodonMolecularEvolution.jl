@@ -18,6 +18,7 @@ include("simulations/ou_hb.jl")
 include("FUBAR/gaussianFUBAR.jl")
 include("FUBAR/grid_utilities.jl")
 include("FUBAR/spd_functions.jl")
+include("FUBAR/maniFUBAR.jl")
 export 
     difFUBARBaseline,
     difFUBARParallel,
