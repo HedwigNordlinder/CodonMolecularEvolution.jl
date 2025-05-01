@@ -133,7 +133,7 @@ function rmala_step(prob::RMALAProblem, μ, Σ; τμ=1e-2, τΣ=1e-2)
         F = cholesky(Symmetric(from))
         Y = F \ (F' \ S)                     # from⁻¹ * S  without inv
         quad = tr(Y * Y)
-        return -0.5 * d * log(4π * τ) + 0.5 * (size(from, 1) + 1) * sum(log, diag(F)) - quad / (4τ)
+        return -0.5 * d * log(4π * τ) + 0.5 * (size(from, 1) + 1) * sum(log, diag(F.U)) - quad / (4τ)
     end
 
     logq_cur2prop = logq_euc(μcand, μ, drift_μ, τμ) +
