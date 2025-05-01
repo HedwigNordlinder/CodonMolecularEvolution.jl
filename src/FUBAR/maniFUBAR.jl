@@ -43,7 +43,7 @@ function logposterior(p::RMALAProblem, μ, Σ)
     # ----- priors (use one Cholesky for Σ) ----------------------------------
     n, ν0 = dim(p), p.ν0
     F = cholesky(Symmetric(Σ))      # O(n³/3)
-    logdetΣ = 2 * sum(log, diag(F))
+    logdetΣ = 2 * sum(log, diag(F.U))
     Σinvμ = F \ (F' \ μ)               # Σ⁻¹ μ  (O(n²))
 
     logprior_Σ = -0.5 * (ν0 + n + 1) * logdetΣ -
