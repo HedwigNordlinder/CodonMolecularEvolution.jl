@@ -19,7 +19,7 @@ struct RMALAProblem
         return new(grid, Σ0, ν0, Σ0_chol)
     end
 end
-
+dim(p::RMALAProblem) = size(p.Σ0, 1)
 #=
 2. MODIFY LOGPOSTERIOR TO USE THE CACHED CHOLESKY FACTOR
    - Avoid recomputing the Cholesky factorization of Σ0
