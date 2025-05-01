@@ -1,9 +1,6 @@
 ###############################################################################
 #  Joint RMALA for  (μ, Σ)  with Σ ∈ P(n)  and  μ ∈ ℝⁿ                         #
 ###############################################################################
-
-using LinearAlgebra
-using Random, Statistics
 using StatsFuns: logsumexp          # for numerically stable softmax/log-lik
 
 # ─────────────────────────────────────────────────────────────────────────────
