@@ -12,6 +12,8 @@ struct RMALAProblem
     end
 end
 
+dim(prob::RMALAProblem) = size(prob.Σ0, 1)
+
 function rmala_step_optimized(prob::RMALAProblem, μ, Σ; τμ=1e-2, τΣ=1e-2, 
                             work_arrays=nothing)
     n = dim(prob)
