@@ -446,7 +446,7 @@ struct RMALAProblem
     Σ0_chol::Cholesky{Float64}
     Σ0inv_cached::Matrix{Float64}
     
-    function RMALAProblemEnhanced(grid, Σ0, ν0)
+    function RMALAProblem(grid, Σ0, ν0)
         Σ0_chol = cholesky(Symmetric(Σ0))
         Σ0inv_cached = inv(Symmetric(Σ0))
         return new(grid, Σ0, ν0, Σ0_chol, Σ0inv_cached)
