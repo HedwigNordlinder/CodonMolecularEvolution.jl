@@ -87,12 +87,12 @@ gradR_logp_Σ(p, μ, Σ) = Σ * gradE_logp_Σ(p,μ,Σ) * Σ
 #  One joint RMALA step                                                       #
 # ─────────────────────────────────────────────────────────────────────────────
 """
-    rmala_step(problem, μ, Σ; τμ=1e-2, τΣ=1e-2 [, rng])
+    rmala_step(problem, μ, Σ; τμ=1e-2, τΣ=1e-2)
 
 Return `(newμ, newΣ, accepted::Bool)`.
 Step sizes can differ for the Euclidean and SPD parts.
 """
-function rmala_step(prob::RMALAProblem, μ, Σ; τμ=1e-2, τΣ=1e-2, rng=Random.GLOBAL_RNG)
+function rmala_step(prob::RMALAProblem, μ, Σ; τμ=1e-2, τΣ=1e-2)
 
     # ─── current gradients and drifts ───────────────────────────────────────
     gμ  = gradE_logp_μ(prob, μ, Σ)
@@ -102,12 +102,12 @@ function rmala_step(prob::RMALAProblem, μ, Σ; τμ=1e-2, τΣ=1e-2, rng=Random
     drift_Σ  = 0.5 * gΣR + geo_drift(Σ)     # SPD: ½∇ᴿ + geometry drift
 
     # ─── propose μᶜ  (Euclidean MALA) ────────────────────────────────────────
-    ξμ   = randn(rng, length(μ))
+    ξμ   = randn(length(μ))
     μcand = μ + τμ*drift_μ + sqrt(2τμ)*ξμ
 
     # ─── propose Σᶜ  (SPD R-MALA) ────────────────────────────────────────────
     n = dim(prob)
-    E = randn(rng, n, n);  E = (E+E')/2
+    E = randn(n, n);  E = (E+E')/2
     sqrtΣ = sqrt(Σ)
     ξΣ    = sqrtΣ * E * sqrtΣ                    # noise ~ N(0,G⁻¹)
 
@@ -146,7 +146,7 @@ function rmala_step(prob::RMALAProblem, μ, Σ; τμ=1e-2, τΣ=1e-2, rng=Random
     logα = logposterior(prob, μcand, Σcand) - logposterior(prob, μ, Σ) +
            logq_prop2cur - logq_cur2prop
 
-    if log(rand(rng)) < logα
+    if log(rand()) < logα
         return μcand, Σcand, true
     else
         return μ, Σ, false
@@ -158,11 +158,8 @@ function run_rmala(prob::RMALAProblem,
                    nsamples::Integer;
                    burnin::Integer      = 1_000,
                    τμ::Real             = 1e-2,
-                   τΣ::Real             = 1e-2,
-                   seed::Integer        = 2025,
+                   τΣ::Real             = 1e-4,
                    progress::Bool       = false)
-
-    rng  = MersenneTwister(seed)
     dimμ = length(μ0)
 
     μ_chain = Matrix{Float64}(undef, dimμ, nsamples)
@@ -176,7 +173,7 @@ function run_rmala(prob::RMALAProblem,
     showprog = progress ? Progress(niter; desc="RMALA") : nothing
 
     for k in 1:niter
-        μ, Σ, ok = rmala_step(prob, μ, Σ; τμ=τμ, τΣ=τΣ, rng=rng)
+        μ, Σ, ok = rmala_step(prob, μ, Σ; τμ=τμ, τΣ=τΣ)
         accepted += ok
         total    += 1
         if k > burnin
