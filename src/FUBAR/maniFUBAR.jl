@@ -55,16 +55,14 @@ end
 =#
 
 function rmala_step(prob::RMALAProblem, μ, Σ; τμ=1e-2, τΣ=1e-2)
-    # Compute Cholesky once and reuse it
+
+    # Cache these expensive computations
     F_Σ = cholesky(Symmetric(Σ))
-    
-    # Compute square root once and reuse it
     sqrtΣ = sqrt(Symmetric(Σ))
-    
+
     # ─── current gradients and drifts ───────────────────────────────────────
-    # Pass the Cholesky factor to avoid recomputation
-    gμ = gradE_logp_μ(prob, μ, Σ, F_Σ)
-    gΣR = gradR_logp_Σ(prob, μ, Σ, F_Σ)
+    gμ = gradE_logp_μ(prob, μ, Σ)
+    gΣR = gradR_logp_Σ(prob, μ, Σ)
 
     drift_μ = 0.5 * gμ
     drift_Σ = 0.5 * gΣR + geo_drift(Σ)
@@ -77,31 +75,59 @@ function rmala_step(prob::RMALAProblem, μ, Σ; τμ=1e-2, τΣ=1e-2)
     n = dim(prob)
     E = randn(n, n)
     E = (E + E') / 2
-    ξΣ = sqrtΣ * E * sqrtΣ
     
+    # Use the cached sqrtΣ to avoid recomputation
+    ξΣ = sqrtΣ * E * sqrtΣ
+
     V = τΣ * drift_Σ + sqrt(2τΣ) * ξΣ
     Σcand = expmap_spd(Σ, V)
     
-    # Compute Cholesky of candidate once and reuse
+    # Pre-compute candidate's Cholesky factorization
     F_Σcand = cholesky(Symmetric(Σcand))
 
-    # ─── log proposal densities - pass Cholesky factors ─────────────────────
-    # Compute log posterior with cached Cholesky factors
-    logp_cur = logposterior(prob, μ, Σ, F_Σ)
-    logp_cand = logposterior(prob, μcand, Σcand, F_Σcand)
-    
-    # Euclidean part
+    # ─── log proposal densities  q((μᶜ,Σᶜ)|(μ,Σ)) and reverse ───────────────
+    # Euclidean part - Keep the original nested function definition
+    function logq_euc(to, from, drift_from, τ)
+        δ = to - from - τ * drift_from
+        k = length(from)
+        return -0.5 * k * log(4π * τ) - dot(δ, δ) / (4τ)
+    end
+
+    # Modified to accept pre-computed Cholesky factor
+    function logq_spd(to, from, drift_from, τ, F_from=nothing)
+        V = logmap_spd(from, to)
+        S = V - τ * drift_from
+        d = size(from, 1) * (size(from, 1) + 1) ÷ 2
+        
+        # Use provided Cholesky if available, otherwise compute it
+        if F_from === nothing
+            F = cholesky(Symmetric(from))
+        else
+            F = F_from
+        end
+        
+        Y = F \ (F' \ S)
+        quad = tr(Y * Y)
+        return -0.5 * d * log(4π * τ) + 0.5 * (size(from, 1) + 1) * sum(log, diag(F.U)) - quad / (4τ)
+    end
+
+    # Use the pre-computed Cholesky factors
     logq_cur2prop = logq_euc(μcand, μ, drift_μ, τμ) +
-                    logq_spd(Σcand, Σ, drift_Σ, τΣ, F_Σ)  # Pass F_Σ
+                    logq_spd(Σcand, Σ, drift_Σ, τΣ, F_Σ)
 
-    # recompute drifts at the proposal, reusing Cholesky
-    drift_μp = 0.5 * gradE_logp_μ(prob, μcand, Σcand, F_Σcand)
-    drift_Σp = 0.5 * gradR_logp_Σ(prob, μcand, Σcand, F_Σcand) + geo_drift(Σcand)
+    # recompute drifts at the proposal for reverse density
+    drift_μp = 0.5 * gradE_logp_μ(prob, μcand, Σcand)
+    drift_Σp = 0.5 * gradR_logp_Σ(prob, μcand, Σcand) + geo_drift(Σcand)
 
+    # Use the pre-computed Cholesky for the candidate
     logq_prop2cur = logq_euc(μ, μcand, drift_μp, τμ) +
-                    logq_spd(Σ, Σcand, drift_Σp, τΣ, F_Σcand)  # Pass F_Σcand
+                    logq_spd(Σ, Σcand, drift_Σp, τΣ, F_Σcand)
 
     # ─── acceptance ratio ───────────────────────────────────────────────────
+    # Use cached Cholesky factors for log posterior evaluations
+    logp_cur = logposterior(prob, μ, Σ)
+    logp_cand = logposterior(prob, μcand, Σcand)
+    
     logα = logp_cand - logp_cur + logq_prop2cur - logq_cur2prop
 
     if log(rand()) < logα
@@ -110,7 +136,6 @@ function rmala_step(prob::RMALAProblem, μ, Σ; τμ=1e-2, τΣ=1e-2)
         return μ, Σ, false
     end
 end
-
 #=
 4. MODIFY HELPER FUNCTIONS TO ACCEPT PRECOMPUTED VALUES
 =#
@@ -222,20 +247,19 @@ function run_rmala(prob::RMALAProblem,
     progress::Bool=false)
     
     dimμ = length(μ0)
-    actual_samples = nsamples
 
-    μ_chain = Matrix{Float64}(undef, dimμ, actual_samples)
+    μ_chain = Matrix{Float64}(undef, dimμ, nsamples)
     Σ_chain = Matrix{Float64}[]
 
     μ, Σ = copy(μ0), copy(Σ0)
     accepted = 0
     total = 0
 
-    total_iter = burnin + nsamples * thinning
-    showprog = progress ? Progress(total_iter; desc="RMALA") : nothing
+    niter = burnin + nsamples * thinning
+    showprog = progress ? Progress(niter; desc="RMALA") : nothing
 
     sample_idx = 0
-    for k in 1:total_iter
+    for k in 1:niter
         μ, Σ, ok = rmala_step(prob, μ, Σ; τμ=τμ, τΣ=τΣ)
         accepted += ok
         total += 1
@@ -254,7 +278,7 @@ function run_rmala(prob::RMALAProblem,
         τμ=τμ,
         τΣ=τΣ,
         burnin=burnin,
-        thinning=thinning)  # Add thinning to stats
+        thinning=thinning)  # Include thinning in stats
 
     return μ_chain, Σ_chain, stats
 end
