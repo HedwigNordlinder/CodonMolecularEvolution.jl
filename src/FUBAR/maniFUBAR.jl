@@ -154,8 +154,8 @@ function run_rmala(prob::RMALAProblem,
                    Σ0::AbstractMatrix,
                    nsamples::Integer;
                    burnin::Integer      = 1_000,
-                   τμ::Real             = 1e-3,
-                   τΣ::Real             = 1e-6,
+                   τμ::Real             = 1e-4,
+                   τΣ::Real             = 1e-7,
                    progress::Bool       = false)
     dimμ = length(μ0)
 
