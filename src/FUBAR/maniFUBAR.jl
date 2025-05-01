@@ -439,7 +439,7 @@ end
 Enhanced version of RMALAProblem that caches expensive computations.
 Highly recommended for 400x400 matrices to avoid redundant calculations.
 """
-struct RMALAProblemEnhanced
+struct RMALAProblem
     grid::FUBARgrid
     Σ0::Matrix{Float64}
     ν0::Float64
