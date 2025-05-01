@@ -8,6 +8,26 @@ For large matrices (400x400), caches key computations and minimizes allocations.
 The optional work_arrays parameter can contain pre-allocated arrays to further reduce
 allocations during sampling.
 """
+"""
+    RMALAProblem(grid, Σ0, ν0)
+
+Enhanced version of RMALAProblem that caches expensive computations.
+Highly recommended for 400x400 matrices to avoid redundant calculations.
+"""
+struct RMALAProblem
+    grid::FUBARgrid
+    Σ0::Matrix{Float64}
+    ν0::Float64
+    Σ0_chol::Cholesky{Float64}
+    Σ0inv_cached::Matrix{Float64}
+    
+    function RMALAProblem(grid, Σ0, ν0)
+        Σ0_chol = cholesky(Symmetric(Σ0))
+        Σ0inv_cached = inv(Symmetric(Σ0))
+        return new(grid, Σ0, ν0, Σ0_chol, Σ0inv_cached)
+    end
+end
+
 function rmala_step_optimized(prob::RMALAProblem, μ, Σ; τμ=1e-2, τΣ=1e-2, 
                             work_arrays=nothing)
     n = dim(prob)
@@ -433,25 +453,6 @@ function run_rmala_optimized(
 end
 
 # Enhanced problem struct with cached components
-"""
-    RMALAProblemEnhanced(grid, Σ0, ν0)
-
-Enhanced version of RMALAProblem that caches expensive computations.
-Highly recommended for 400x400 matrices to avoid redundant calculations.
-"""
-struct RMALAProblem
-    grid::FUBARgrid
-    Σ0::Matrix{Float64}
-    ν0::Float64
-    Σ0_chol::Cholesky{Float64}
-    Σ0inv_cached::Matrix{Float64}
-    
-    function RMALAProblem(grid, Σ0, ν0)
-        Σ0_chol = cholesky(Symmetric(Σ0))
-        Σ0inv_cached = inv(Symmetric(Σ0))
-        return new(grid, Σ0, ν0, Σ0_chol, Σ0inv_cached)
-    end
-end
 
 # Matrix square root and exponential/logarithm are major bottlenecks
 # For 400x400 matrices, consider these optimized variants:
