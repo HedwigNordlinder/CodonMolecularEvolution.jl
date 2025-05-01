@@ -167,7 +167,7 @@ function run_rmala(prob::RMALAProblem,
 
     # pre-allocate noise buffers
     ξμ = zeros(dimμ)
-    E   = zeros(dim(Σ,1), dim(Σ,1))
+    E   = zeros(size(Σ,1), size(Σ,1))
 
     for k in 1:(nsamples + burnin)
         μ, Σ, ok = rmala_step(prob, μ, Σ;
