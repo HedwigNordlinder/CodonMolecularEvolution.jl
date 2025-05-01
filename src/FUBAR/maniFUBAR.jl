@@ -33,47 +33,52 @@ dim(p::RMALAProblem) = size(p.Σ0,1)
 Un-normalised joint log-posterior  log p(data,μ,Σ).
 """
 function logposterior(p::RMALAProblem, μ, Σ)
-
-    # likelihood  ℓ = softmax(μ)' * L
     L   = p.grid.cond_lik_matrix
-    log_soft = μ .- logsumexp(μ)
-    soft     = exp.(log_soft)
-    loglik   = sum( log.(soft' * L) )        # summed over alignment sites
 
-    # log-priors (kernels)
-    n, ν0 = dim(p), p.ν0
-    Σ0inv = inv(p.Σ0)
-    logprior_Σ = -0.5*(ν0 + n + 1)*logdet(Σ) - 0.5*tr(Σ0inv * Σ)
-    logprior_μ = -0.5 * μ' * inv(Σ) * μ
+    # ----- data likelihood ---------------------------------------------------
+    log_soft = μ .- logsumexp(μ)          # K×1
+    soft     = exp.(log_soft)
+    loglik   = sum( log.(soft' * L) )
+
+    # ----- priors (use one Cholesky for Σ) ----------------------------------
+    n, ν0   = dim(p), p.ν0
+    F       = cholesky(Symmetric(Σ))      # O(n³/3)
+    logdetΣ = 2*sum(log, diag(F))
+    Σinvμ   = F \ (F' \ μ)               # Σ⁻¹ μ  (O(n²))
+
+    logprior_Σ = -0.5*(ν0 + n + 1)*logdetΣ -
+                 0.5*sum(abs2, F \ cholesky(p.Σ0).U)   # tr(Σ0⁻¹ Σ)
+
+    logprior_μ = -0.5 * dot(μ, Σinvμ)
 
     return loglik + logprior_Σ + logprior_μ
 end
 
-# Euclidean gradient wrt Σ  (kernel of Wishart × Gaussian)
+const Σ0inv = inv             # <–– place-holder to remind us it's constant
 function gradE_logp_Σ(p::RMALAProblem, μ, Σ)
     n, ν0 = dim(p), p.ν0
-    Σinv  = inv(Σ)
-    return 0.5*(ν0 - n - 1)*Σinv' - 0.5*(μ*μ') - 0.5*inv(p.Σ0)
+    F     = cholesky(Symmetric(Σ))
+    Σinv  = Matrix(F \ (F' \ I))          # still avoids two inv calls
+    return 0.5*(ν0 - n - 1)*Σinv - 0.5*(μ*μ') - 0.5*Σ0inv(p.Σ0)
 end
+
 
 # Euclidean gradient wrt μ  (softmax log-likelihood + Gaussian prior)
 function gradE_logp_μ(p::RMALAProblem, μ, Σ)
-    L = p.grid.cond_lik_matrix
-    K, N = size(L)             # K = dim, N = #sites
+    L       = p.grid.cond_lik_matrix
+    K, N    = size(L)
     log_soft = μ .- logsumexp(μ)
-    soft     = exp.(log_soft)      # K-vector
+    soft     = exp.(log_soft)             # cache once
 
-    # gradient of log-likelihood wrt μ
     gℓ = zeros(K)
     for j in 1:N
-        Lj = @view L[:,j]
-        denom = logsumexp(log_soft .+ log.(Lj))
-        pj    = exp.(log_soft .+ log.(Lj) .- denom)   # posterior over categories
-        gℓ .+= pj .- soft * sum(pj)                   # see thesis Appendix A
+        Lj     = @view L[:,j]
+        lognum = log_soft .+ log.(Lj)
+        denom  = logsumexp(lognum)
+        pj     = exp.(lognum .- denom)
+        gℓ .+= pj .- soft * sum(pj)
     end
-
-    # gradient of Gaussian prior
-    gprior = -inv(Σ) * μ
+    gprior = -cholesky(Symmetric(Σ)) \ (cholesky(Symmetric(Σ)).U' \ μ)
     return gℓ + gprior
 end
 
@@ -119,16 +124,16 @@ function rmala_step(prob::RMALAProblem, μ, Σ; τμ=1e-2, τΣ=1e-2)
         return -0.5*k*log(4π*τ) - dot(δ,δ)/(4τ)
     end
 
-    # SPD part
     function logq_spd(to, from, drift_from, τ)
         V  = logmap_spd(from,to)
         S  = V - τ*drift_from
-        invfrom_S = inv(from)*S
-        d = n*(n+1)÷2
-        quad = tr(invfrom_S*invfrom_S)
-        return -0.5*d*log(4π*τ) + 0.5*(n+1)*logdet(from) - quad/(4τ)
+        d  = size(from,1)*(size(from,1)+1) ÷ 2
+        F  = cholesky(Symmetric(from))
+        Y  = F \ (F' \ S)                     # from⁻¹ * S  without inv
+        quad = tr(Y*Y)
+        return -0.5*d*log(4π*τ) + 0.5*(size(from,1)+1)*sum(log,diag(F)) - quad/(4τ)
     end
-
+    
     logq_cur2prop = logq_euc(μcand, μ, drift_μ, τμ) +
                     logq_spd(Σcand, Σ, drift_Σ, τΣ)
 
