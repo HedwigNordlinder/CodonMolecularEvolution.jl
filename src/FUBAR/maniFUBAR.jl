@@ -24,7 +24,7 @@ dim(p::RMALAProblem) = size(p.Σ0, 1)
 2. MODIFY LOGPOSTERIOR TO USE THE CACHED CHOLESKY FACTOR
    - Avoid recomputing the Cholesky factorization of Σ0
 =#
-
+const Σ0inv = inv
 function logposterior(p::RMALAProblem, μ, Σ)
     L = p.grid.cond_lik_matrix
 
