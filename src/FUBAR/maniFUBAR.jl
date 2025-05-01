@@ -350,13 +350,8 @@ function gradE_logp_μ(p::RMALAProblem, μ, Σ, F=nothing)
 end
 
 # Optimized run_rmala function
-"""
-    run_rmala_optimized(prob, μ0, Σ0, nsamples; kwargs...)
 
-Run RMALA with optimizations for large matrices (400x400).
-Uses pre-allocated work arrays to minimize allocations during sampling.
-"""
-function run_rmala_optimized(
+function run_rmala(
     prob::RMALAProblem,
     μ0::AbstractVector,
     Σ0::AbstractMatrix,
@@ -530,7 +525,7 @@ function logq_spd(to, from, drift_from, τ, F=nothing)
 end
 
 # Optimized run_rmala function
-function run_rmala_optimized(
+function run_rmala(
     prob::RMALAProblem,
     μ0::AbstractVector,
     Σ0::AbstractMatrix,
