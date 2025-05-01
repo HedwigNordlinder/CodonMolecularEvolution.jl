@@ -39,5 +39,7 @@ export
     alphabetagrid,
     DirichletFUBAR,
     FIFEFUBAR,
-    FUBARgrid
+    FUBARgrid,
+    RMALAProblem,
+    run_rmala
 end

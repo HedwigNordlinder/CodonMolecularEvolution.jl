@@ -1,99 +1,196 @@
+###############################################################################
+#  Joint RMALA for  (μ, Σ)  with Σ ∈ P(n)  and  μ ∈ ℝⁿ                         #
+###############################################################################
+
+using LinearAlgebra
+using Random, Statistics
+using StatsFuns: logsumexp          # for numerically stable softmax/log-lik
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Geometry helpers on P(n) – identical to earlier                            #
+# ─────────────────────────────────────────────────────────────────────────────
+expmap_spd(X,V) = (Xh   = sqrt(X); invXh = inv(Xh);   Xh * exp(invXh*V*invXh) * Xh)
+logmap_spd(X,Y) = (Xh   = sqrt(X); invXh = inv(Xh);   Xh * log(invXh*Y*invXh) * Xh)
+
+# geometry drift  a(X)=−(n+1)/2 · X   for affine-invariant metric
+geo_drift(X) = -(size(X,1)+1)/2 * X
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Problem definition                                                         #
+# ─────────────────────────────────────────────────────────────────────────────
 struct RMALAProblem
-    grid::FUBARgrid
-    Σ0::Matrix{Float64}
-    ν0::Float64
-    dim::Int
+    grid :: FUBARgrid
+    Σ0   :: Matrix{Float64}
+    ν0   :: Float64
 end
 
-function wishart_logprior_kernel(problem::RMALAProblem, Σ)
-    n = problem.dim
-    ν = problem.ν0
-    Σ0 = problem.Σ0
-    return -0.5 * (ν + n + 1) * logdet(Σ) - 0.5 * tr(Σ0 \ Σ)
+# dimensions that are used many times
+dim(p::RMALAProblem) = size(p.Σ0,1)
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Log-posterior  and its gradients                                           #
+# ─────────────────────────────────────────────────────────────────────────────
+"""
+    logposterior(p, μ, Σ)
+
+Un-normalised joint log-posterior  log p(data,μ,Σ).
+"""
+function logposterior(p::RMALAProblem, μ, Σ)
+
+    # likelihood  ℓ = softmax(μ)' * L
+    L   = p.grid.cond_lik_matrix
+    log_soft = μ .- logsumexp(μ)
+    soft     = exp.(log_soft)
+    loglik   = sum( log.(soft' * L) )        # summed over alignment sites
+
+    # log-priors (kernels)
+    n, ν0 = dim(p), p.ν0
+    Σ0inv = inv(p.Σ0)
+    logprior_Σ = -0.5*(ν0 + n + 1)*logdet(Σ) - 0.5*tr(Σ0inv * Σ)
+    logprior_μ = -0.5 * μ' * inv(Σ) * μ
+
+    return loglik + logprior_Σ + logprior_μ
 end
 
-function gaussian_logprior_kernel(problem::RMALAProblem, μ, Σ)
-    return -0.5 * (μ' * inv(Σ) * μ)
+# Euclidean gradient wrt Σ  (kernel of Wishart × Gaussian)
+function gradE_logp_Σ(p::RMALAProblem, μ, Σ)
+    n, ν0 = dim(p), p.ν0
+    Σinv  = inv(Σ)
+    return 0.5*(ν0 - n - 1)*Σinv' - 0.5*(μ*μ') - 0.5*inv(p.Σ0)
 end
 
-function combined_logprior(problem::RMALAProblem, μ, Σ)
-    return wishart_logprior_kernel(problem, Σ) + gaussian_logprior_kernel(problem, μ, Σ)
-end
+# Euclidean gradient wrt μ  (softmax log-likelihood + Gaussian prior)
+function gradE_logp_μ(p::RMALAProblem, μ, Σ)
+    L = p.grid.cond_lik_matrix
+    K, N = size(L)             # K = dim, N = #sites
+    log_soft = μ .- logsumexp(μ)
+    soft     = exp.(log_soft)      # K-vector
 
-function logposterior(grid::FUBARgrid,μ, Σ)
-    ℓ = sum(log.(softmax(μ)'grid.cond_lik_matrix))
-    return ℓ + combined_logprior(problem, μ, Σ)
-end
-
-# Euclidean gradient wrt Σ
-function dℓdΣ(problem::RMALAProblem, Σ, μ)
-    Σ_inv_T = transpose(inv(Σ))
-    μ_outer = μ * transpose(μ)
-    V_inv = inv(problem.Σ0)
-    
-    result = ((problem.ν0 - problem.dim - 2)/2) * Σ_inv_T - 0.5 * μ_outer - 0.5 * V_inv
-    return result
-end
-
-function dℓdμ(problem::RMALAProblem, μ, Σ)
-    K = problem.dim
-    N = size(problem.grid.cond_lik_matrix, 2)
-    M = problem.grid.cond_lik_matrix 
-    log_p = μ .- logsumexp(μ)
-    p = exp.(log_p)
-    ∇ℓ = zeros(K)
+    # gradient of log-likelihood wrt μ
+    gℓ = zeros(K)
     for j in 1:N
-        M_j = @view M[:, j]
-        denom = logsumexp(log_p .+ log.(M_j)) 
-        term1 = p .* (M_j ./ exp(denom))       
-        term2 = p * sum(p .* (M_j ./ exp(denom))) 
-        ∇ℓ .+= term1 .- term2
+        Lj = @view L[:,j]
+        denom = logsumexp(log_soft .+ log.(Lj))
+        pj    = exp.(log_soft .+ log.(Lj) .- denom)   # posterior over categories
+        gℓ .+= pj .- soft * sum(pj)                   # see thesis Appendix A
     end
-    ∇prior = -inv(Σ) * μ
-    return ∇ℓ + ∇prior
+
+    # gradient of Gaussian prior
+    gprior = -inv(Σ) * μ
+    return gℓ + gprior
 end
 
-function riemannian_dℓdΣ(problem::RMALAProblem, Σ, μ)
-    return Σ*dℓdΣ(problem, Σ, μ)*Σ
-end
+# Riemannian gradient for Σ
+gradR_logp_Σ(p, μ, Σ) = Σ * gradE_logp_Σ(p,μ,Σ) * Σ
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  One joint RMALA step                                                       #
+# ─────────────────────────────────────────────────────────────────────────────
+"""
+    rmala_step(problem, μ, Σ; τμ=1e-2, τΣ=1e-2 [, rng])
 
+Return `(newμ, newΣ, accepted::Bool)`.
+Step sizes can differ for the Euclidean and SPD parts.
+"""
+function rmala_step(prob::RMALAProblem, μ, Σ; τμ=1e-2, τΣ=1e-2, rng=Random.GLOBAL_RNG)
 
-function rmala_step(problem::RMALAProblem, X, ν, Σ; τ=1e-2, rng=Random.GLOBAL_RNG)
+    # ─── current gradients and drifts ───────────────────────────────────────
+    gμ  = gradE_logp_μ(prob, μ, Σ)
+    gΣR = gradR_logp_Σ(prob, μ, Σ)
 
-    n   = problem.dim
-    d   = n*(n+1)÷2                           # tangent dimension
+    drift_μ  = 0.5 * gμ                     # Euclidean: only ½∇
+    drift_Σ  = 0.5 * gΣR + geo_drift(Σ)     # SPD: ½∇ᴿ + geometry drift
 
-    # total drift   m(X)=½∇ᴿlog p + a(X)
-    drift = 0.5*gradR_logp(X,ν,Σ) + geo_drift(X)
+    # ─── propose μᶜ  (Euclidean MALA) ────────────────────────────────────────
+    ξμ   = randn(rng, length(μ))
+    μcand = μ + τμ*drift_μ + sqrt(2τμ)*ξμ
 
-    # isotropic noise ξ ~ N(0, G⁻¹)
-    E = randn(rng,n,n);  E = (E+E')/2
-    sqrtX = sqrt(X)
-    ξ = sqrtX * E * sqrtX
+    # ─── propose Σᶜ  (SPD R-MALA) ────────────────────────────────────────────
+    n = dim(prob)
+    E = randn(rng, n, n);  E = (E+E')/2
+    sqrtΣ = sqrt(Σ)
+    ξΣ    = sqrtΣ * E * sqrtΣ                    # noise ~ N(0,G⁻¹)
 
-    # proposal in tangent & exponential map
-    V = τ*drift + sqrt(2τ)*ξ
-    Y = expmap_spd(X,V)
+    V  = τΣ*drift_Σ + sqrt(2τΣ)*ξΣ
+    Σcand = expmap_spd(Σ, V)
 
-    # log proposal density  q(Y|X)
-    function logq(to,from,drift_from)
-        V   = logmap_spd(from,to)
-        S   = V - τ*drift_from
+    # ─── log proposal densities  q((μᶜ,Σᶜ)|(μ,Σ)) and reverse ───────────────
+    # Euclidean part
+    function logq_euc(to, from, drift_from, τ)
+        δ = to - from - τ*drift_from
+        k = length(from)
+        return -0.5*k*log(4π*τ) - dot(δ,δ)/(4τ)
+    end
+
+    # SPD part
+    function logq_spd(to, from, drift_from, τ)
+        V  = logmap_spd(from,to)
+        S  = V - τ*drift_from
         invfrom_S = inv(from)*S
-        quad   = tr(invfrom_S*invfrom_S)            # ||S||²_from
-        return  -0.5*d*log(4π*τ) + 0.5*(n+1)*logdet(from) - quad/(4τ)
+        d = n*(n+1)÷2
+        quad = tr(invfrom_S*invfrom_S)
+        return -0.5*d*log(4π*τ) + 0.5*(n+1)*logdet(from) - quad/(4τ)
     end
 
-    driftX = drift
-    driftY = 0.5*gradR_logp(Y,ν,Σ) + geo_drift(Y)
+    logq_cur2prop = logq_euc(μcand, μ, drift_μ, τμ) +
+                    logq_spd(Σcand, Σ, drift_Σ, τΣ)
 
-    logα = logp(Y,ν,Σ) - logp(X,ν,Σ) +
-           logq(X,Y,driftY) - logq(Y,X,driftX)
+    # recompute drifts at the proposal for reverse density
+    drift_μp = 0.5 * gradE_logp_μ(prob, μcand, Σcand)
+    drift_Σp = 0.5 * gradR_logp_Σ(prob, μcand, Σcand) + geo_drift(Σcand)
+
+    logq_prop2cur = logq_euc(μ, μcand, drift_μp, τμ) +
+                    logq_spd(Σ, Σcand, drift_Σp, τΣ)
+
+    # ─── acceptance ratio ───────────────────────────────────────────────────
+    logα = logposterior(prob, μcand, Σcand) - logposterior(prob, μ, Σ) +
+           logq_prop2cur - logq_cur2prop
 
     if log(rand(rng)) < logα
-        return Y,true
+        return μcand, Σcand, true
     else
-        return X,false
+        return μ, Σ, false
     end
+end
+function run_rmala(prob::RMALAProblem,
+                   μ0::AbstractVector,
+                   Σ0::AbstractMatrix,
+                   nsamples::Integer;
+                   burnin::Integer      = 1_000,
+                   τμ::Real             = 1e-2,
+                   τΣ::Real             = 1e-2,
+                   seed::Integer        = 2025,
+                   progress::Bool       = false)
+
+    rng  = MersenneTwister(seed)
+    dimμ = length(μ0)
+
+    μ_chain = Matrix{Float64}(undef, dimμ, nsamples)
+    Σ_chain = Matrix{Float64}[]
+
+    μ, Σ    = copy(μ0), copy(Σ0)
+    accepted = 0
+    total    = 0
+
+    niter = nsamples + burnin
+    showprog = progress ? Progress(niter; desc="RMALA") : nothing
+
+    for k in 1:niter
+        μ, Σ, ok = rmala_step(prob, μ, Σ; τμ=τμ, τΣ=τΣ, rng=rng)
+        accepted += ok
+        total    += 1
+        if k > burnin
+            idx = k - burnin
+            μ_chain[:,idx] = μ
+            push!(Σ_chain, copy(Σ))
+        end
+        progress && next!(showprog)
+    end
+
+    stats = (accept_rate = accepted/total,
+             τμ          = τμ,
+             τΣ          = τΣ,
+             burnin      = burnin)
+
+    return μ_chain, Σ_chain, stats
 end
