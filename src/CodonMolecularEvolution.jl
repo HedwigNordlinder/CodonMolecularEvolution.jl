@@ -19,6 +19,7 @@ include("FUBAR/gaussianFUBAR.jl")
 include("FUBAR/grid_utilities.jl")
 include("FUBAR/spd_functions.jl")
 include("FUBAR/maniFUBAR.jl")
+include("FUBAR/maniFUBAR_hierarchical.jl")
 export 
     difFUBARBaseline,
     difFUBARParallel,
@@ -42,5 +43,6 @@ export
     FIFEFUBAR,
     FUBARgrid,
     RMALAProblem,
+    HierarchicalRMALAProblem,
     run_rmala
 end

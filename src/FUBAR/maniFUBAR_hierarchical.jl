@@ -1,197 +1,224 @@
 ###############################################################################
-#  Joint RMALA for  (μ, Σ)  with Σ ∈ P(n)  and  μ ∈ ℝⁿ                         #
+#  Hierarchical RMALA for multiple FUBARgrids sharing a common Σ              #
 ###############################################################################
-using StatsFuns: logsumexp          # for numerically stable softmax/log-lik
+using StatsFuns: logsumexp
+using LinearAlgebra
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  Geometry helpers on P(n) – identical to earlier                            #
+#  Geometry helpers on the SPD manifold P(n)
 # ─────────────────────────────────────────────────────────────────────────────
 expmap_spd(X, V) = (Xh = sqrt(X); invXh = inv(Xh); Xh * exp(invXh * V * invXh) * Xh)
 logmap_spd(X, Y) = (Xh = sqrt(X); invXh = inv(Xh); Xh * log(invXh * Y * invXh) * Xh)
-
-# geometry drift  a(X)=−(n+1)/2 · X   for affine-invariant metric
 geo_drift(X) = -(size(X, 1) + 1) / 2 * X
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  Problem definition                                                         #
+#  Problem definition: multiple FUBARgrids with a shared covariance matrix Σ
 # ─────────────────────────────────────────────────────────────────────────────
-struct RMALAProblem
-    grid::Vector{FUBARgrid}
-    Σ0::Matrix{Float64}
-    ν0::Float64
+struct HierarchicalRMALAProblem
+    grids::Vector{FUBARgrid}    # List of FUBARgrids
+    Σ0::Matrix{Float64}         # Prior scale (Σ₀) for Σ
+    ν0::Float64                 # Degrees of freedom for Σ prior
 end
 
-# dimensions that are used many times
-dim(p::RMALAProblem) = size(p.Σ0, 1)
+# number of grids and dimension of Σ
+num_grids(p::HierarchicalRMALAProblem) = length(p.grids)
+dimΣ(p::HierarchicalRMALAProblem) = size(p.Σ0, 1)
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  Log-posterior  and its gradients                                           #
+#  Joint log-posterior of all data, μs, and Σ
 # ─────────────────────────────────────────────────────────────────────────────
-"""
-    logposterior(p, μ, Σ)
+function logposterior(p::HierarchicalRMALAProblem, μs::Vector{Vector{Float64}}, Σ::Matrix{Float64})
+    # data likelihood (sum over grids)
+    loglik = 0.0
+    for (i, grid) in enumerate(p.grids)
+        L = grid.cond_lik_matrix      # K × N
+        μ = μs[i]
+        log_soft = μ .- logsumexp(μ)
+        soft = exp.(log_soft)
+        loglik += sum(log.(soft' * L))
+    end
 
-Un-normalised joint log-posterior  log p(data,μ,Σ).
-"""
-function logposterior(p::RMALAProblem, μ, Σ)
-    L = p.grid.cond_lik_matrix
-
-    # ----- data likelihood ---------------------------------------------------
-    log_soft = μ .- logsumexp(μ)          # K×1
-    soft = exp.(log_soft)
-    loglik = sum(log.(soft' * L))
-
-    # ----- priors (use one Cholesky for Σ) ----------------------------------
-    n, ν0 = dim(p), p.ν0
-    F = cholesky(Symmetric(Σ))      # O(n³/3)
+    # Wishart prior on Σ
+    n, ν0 = dimΣ(p), p.ν0
+    F = cholesky(Symmetric(Σ))
     logdetΣ = 2 * sum(log, diag(F.U))
-    Σinvμ = F \ (F' \ μ)               # Σ⁻¹ μ  (O(n²))
+    logprior_Σ = -0.5 * (ν0 + n + 1) * logdetΣ - 0.5 * sum(abs2, F \ cholesky(p.Σ0).U)
 
-    logprior_Σ = -0.5 * (ν0 + n + 1) * logdetΣ -
-                 0.5 * sum(abs2, F \ cholesky(p.Σ0).U)   # tr(Σ0⁻¹ Σ)
-
-    logprior_μ = -0.5 * dot(μ, Σinvμ)
+    # Gaussian priors μ_i ~ N(0, Σ)
+    Σinv = Matrix(F \ (F' \ I))
+    logprior_μ = 0.0
+    for μ in μs
+        logprior_μ += -0.5 * dot(μ, Σinv * μ)
+    end
 
     return loglik + logprior_Σ + logprior_μ
 end
 
-const Σ0inv = inv             # <–– place-holder to remind us it's constant
-function gradE_logp_Σ(p::RMALAProblem, μ, Σ)
-    n, ν0 = dim(p), p.ν0
-    F = cholesky(Symmetric(Σ))
-    Σinv = Matrix(F \ (F' \ I))          # still avoids two inv calls
-    return 0.5 * (ν0 - n - 1) * Σinv - 0.5 * (μ * μ') - 0.5 * Σ0inv(p.Σ0)
-end
+# ─────────────────────────────────────────────────────────────────────────────
+#  Euclidean gradient wrt each μ_i (softmax likelihood + Gaussian prior)
+# ─────────────────────────────────────────────────────────────────────────────
+function gradE_logp_μs(p::HierarchicalRMALAProblem, μs::Vector{Vector{Float64}}, Σ::Matrix{Float64})
+    Σinv = inv(Σ)
+    grads = Vector{Vector{Float64}}(undef, num_grids(p))
 
+    for (i, grid) in enumerate(p.grids)
+        L = grid.cond_lik_matrix
+        K, N = size(L)
+        μ = μs[i]
+        log_soft = μ .- logsumexp(μ)
+        soft = exp.(log_soft)
 
-# Euclidean gradient wrt μ  (softmax log-likelihood + Gaussian prior)
-function gradE_logp_μ(p::RMALAProblem, μ, Σ)
-    L = p.grid.cond_lik_matrix
-    K, N = size(L)
-    log_soft = μ .- logsumexp(μ)
-    soft = exp.(log_soft)             # cache once
+        gℓ = zeros(K)
+        for j in 1:N
+            Lj = @view L[:, j]
+            lognum = log_soft .+ log.(Lj)
+            denom = logsumexp(lognum)
+            pj = exp.(lognum .- denom)
+            gℓ .+= pj .- soft * sum(pj)
+        end
 
-    gℓ = zeros(K)
-    for j in 1:N
-        Lj = @view L[:, j]
-        lognum = log_soft .+ log.(Lj)
-        denom = logsumexp(lognum)
-        pj = exp.(lognum .- denom)
-        gℓ .+= pj .- soft * sum(pj)
+        grads[i] = gℓ .- Σinv * μ
     end
-    F = cholesky(Symmetric(Σ))
-    gprior = -(F \ μ)               # Gaussian-prior gradient
-    return gℓ + gprior
+
+    return grads
 end
 
-# Riemannian gradient for Σ
-gradR_logp_Σ(p, μ, Σ) = Σ * gradE_logp_Σ(p, μ, Σ) * Σ
+# ─────────────────────────────────────────────────────────────────────────────
+#  Riemannian gradient wrt Σ
+# ─────────────────────────────────────────────────────────────────────────────
+function gradE_logp_Σ(p::HierarchicalRMALAProblem, μs::Vector{Vector{Float64}}, Σ::Matrix{Float64})
+    n, ν0 = dimΣ(p), p.ν0
+    F = cholesky(Symmetric(Σ))
+    Σinv = Matrix(F \ (F' \ I))
+
+    S = zeros(n, n)
+    for μ in μs
+        S .+= μ * μ'
+    end
+
+    return 0.5 * (ν0 - n - 1) * Σinv - 0.5 * S - 0.5 * inv(p.Σ0)
+end
+
+gradR_logp_Σ(p, μs, Σ) = Σ * gradE_logp_Σ(p, μs, Σ) * Σ
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  One joint RMALA step                                                       #
+#  One joint RMALA step for hierarchical model
 # ─────────────────────────────────────────────────────────────────────────────
-"""
-    rmala_step(problem, μ, Σ; τμ=1e-2, τΣ=1e-2)
+function rmala_step(p::HierarchicalRMALAProblem, μs, Σ; τμ=1e-2, τΣ=1e-2)
+    # drifts
+    Gμ = gradE_logp_μs(p, μs, Σ)
+    drift_μs = [0.5 * g for g in Gμ]
+    drift_Σ = 0.5 * gradR_logp_Σ(p, μs, Σ) + geo_drift(Σ)
 
-Return `(newμ, newΣ, accepted::Bool)`.
-Step sizes can differ for the Euclidean and SPD parts.
-"""
-function rmala_step(prob::RMALAProblem, μ, Σ; τμ=1e-2, τΣ=1e-2)
+    # propose μ candidates (Euclidean MALA)
+    μs_cand = Vector{Vector{Float64}}(undef, num_grids(p))
+    for i in 1:num_grids(p)
+        ξμ = randn(length(μs[i]))
+        μs_cand[i] = μs[i] + τμ * drift_μs[i] + sqrt(2τμ) * ξμ
+    end
 
-    # ─── current gradients and drifts ───────────────────────────────────────
-    gμ = gradE_logp_μ(prob, μ, Σ)
-    gΣR = gradR_logp_Σ(prob, μ, Σ)
-
-    drift_μ = 0.5 * gμ                     # Euclidean: only ½∇
-    drift_Σ = 0.5 * gΣR + geo_drift(Σ)     # SPD: ½∇ᴿ + geometry drift
-
-    # ─── propose μᶜ  (Euclidean MALA) ────────────────────────────────────────
-    ξμ = randn(length(μ))
-    μcand = μ + τμ * drift_μ + sqrt(2τμ) * ξμ
-
-    # ─── propose Σᶜ  (SPD R-MALA) ────────────────────────────────────────────
-    n = dim(prob)
-    E = randn(n, n)
-    E = (E + E') / 2
+    # propose Σ candidate (SPD R-MALA)
+    n = dimΣ(p)
+    E = Symmetric(randn(n, n))
     sqrtΣ = sqrt(Σ)
-    ξΣ = sqrtΣ * E * sqrtΣ                    # noise ~ N(0,G⁻¹)
-
+    ξΣ = sqrtΣ * E * sqrtΣ
     V = τΣ * drift_Σ + sqrt(2τΣ) * ξΣ
-    Σcand = expmap_spd(Σ, V)
+    Σ_cand = expmap_spd(Σ, V)
 
-    # ─── log proposal densities  q((μᶜ,Σᶜ)|(μ,Σ)) and reverse ───────────────
-    # Euclidean part
-    function logq_euc(to, from, drift_from, τ)
-        δ = to - from - τ * drift_from
-        k = length(from)
-        return -0.5 * k * log(4π * τ) - dot(δ, δ) / (4τ)
+    # log proposal densities
+    function logq_euc(to, from, drift, τ)
+        δ = to .- from .- τ .* drift
+        return -0.5 * length(from) * log(4π * τ) - dot(δ, δ) / (4τ)
     end
-
-    function logq_spd(to, from, drift_from, τ)
+    function logq_spd(to, from, drift, τ)
         V = logmap_spd(from, to)
-        S = V - τ * drift_from
+        S = V .- τ .* drift
         d = size(from, 1) * (size(from, 1) + 1) ÷ 2
         F = cholesky(Symmetric(from))
-        Y = F \ (F' \ S)                     # from⁻¹ * S  without inv
+        Y = F \ (F' \ S)
         quad = tr(Y * Y)
         return -0.5 * d * log(4π * τ) + 0.5 * (size(from, 1) + 1) * sum(log, diag(F.U)) - quad / (4τ)
     end
 
-    logq_cur2prop = logq_euc(μcand, μ, drift_μ, τμ) +
-                    logq_spd(Σcand, Σ, drift_Σ, τΣ)
+    # forward and reverse densities
+    logq_fwd = sum(logq_euc.(μs_cand, μs, drift_μs, τμ)) + logq_spd(Σ_cand, Σ, drift_Σ, τΣ)
+    # reverse drifts
+    Gμ_p = gradE_logp_μs(p, μs_cand, Σ_cand)
+    drift_μs_p = [0.5 * g for g in Gμ_p]
+    drift_Σ_p = 0.5 * gradR_logp_Σ(p, μs_cand, Σ_cand) + geo_drift(Σ_cand)
+    logq_rev = sum(logq_euc.(μs, μs_cand, drift_μs_p, τμ)) + logq_spd(Σ, Σ_cand, drift_Σ_p, τΣ)
 
-    # recompute drifts at the proposal for reverse density
-    drift_μp = 0.5 * gradE_logp_μ(prob, μcand, Σcand)
-    drift_Σp = 0.5 * gradR_logp_Σ(prob, μcand, Σcand) + geo_drift(Σcand)
-
-    logq_prop2cur = logq_euc(μ, μcand, drift_μp, τμ) +
-                    logq_spd(Σ, Σcand, drift_Σp, τΣ)
-
-    # ─── acceptance ratio ───────────────────────────────────────────────────
-    logα = logposterior(prob, μcand, Σcand) - logposterior(prob, μ, Σ) +
-           logq_prop2cur - logq_cur2prop
-
+    # acceptance
+    logα = logposterior(p, μs_cand, Σ_cand) - logposterior(p, μs, Σ) + logq_rev - logq_fwd
     if log(rand()) < logα
-        return μcand, Σcand, true
+        return μs_cand, Σ_cand, true
     else
-        return μ, Σ, false
+        return μs, Σ, false
     end
 end
-function run_rmala(prob::RMALAProblem,
-    μ0::AbstractVector,
-    Σ0::AbstractMatrix,
-    nsamples::Integer;
-    burnin::Integer=1_000,
-    τμ::Real=1e-4,
-    τΣ::Real=1e-7,
-    progress::Bool=false)
-    dimμ = length(μ0)
 
-    μ_chain = Matrix{Float64}(undef, dimμ, nsamples)
-    Σ_chain = Matrix{Float64}[]
+# ─────────────────────────────────────────────────────────────────────────────
+#  RMALA sampler for hierarchical model
+# ─────────────────────────────────────────────────────────────────────────────
+"""
+    run_rmala(p, Σ0, nsamples; μ0s=nothing, burnin=1000, τμ=1e-4, τΣ=1e-7, progress=false)
 
-    μ, Σ = copy(μ0), copy(Σ0)
-    accepted = 0
-    total = 0
+Samples from the hierarchical RMALA posterior.
 
-    niter = nsamples + burnin
-    showprog = progress ? Progress(niter; desc="RMALA") : nothing
+If μ0s is not provided, each μ_i is initialized to zero.
 
-    for k in 1:niter
-        μ, Σ, ok = rmala_step(prob, μ, Σ; τμ=τμ, τΣ=τΣ)
-        accepted += ok
-        total += 1
-        if k > burnin
-            idx = k - burnin
-            μ_chain[:, idx] = μ
-            push!(Σ_chain, copy(Σ))
-        end
-        progress && next!(showprog)
+Returns:
+  μ_chains :: Vector{Vector{Vector{Float64}}} of length G (num_grids).
+                μ_chains[i] is a Vector of nsamples, each an inner
+                Vector{Float64} (length K) representing the sample for grid i.
+                So μ_chains[i][j][k] is the kth category of the jth draw for grid i.
+  Σ_chain  :: Vector{Matrix{Float64}} of length nsamples (shared Σ draws)
+  stats     :: Named tuple with fields:
+                 • accept_rate :: overall acceptance fraction
+                 • τμ, τΣ      :: step sizes used
+                 • burnin     :: number of burnin iterations
+"""
+function run_rmala(p::HierarchicalRMALAProblem,
+                   Σ0::Matrix{Float64},
+                   nsamples::Integer;
+                   μ0s::Union{Nothing, Vector{Vector{Float64}}}=nothing,
+                   burnin::Integer=1_000,
+                   τμ::Real=1e-4,
+                   τΣ::Real=1e-7,
+                   progress::Bool=false)
+    # initialize μs
+    G = num_grids(p)
+    if μ0s === nothing
+        K = size(p.grids[1].cond_lik_matrix, 1)
+        μ0s = [zeros(K) for _ in 1:G]
     end
 
-    stats = (accept_rate=accepted / total,
-        τμ=τμ,
-        τΣ=τΣ,
-        burnin=burnin)
+    # allocate chains
+    μ_chains = [Vector{Vector{Float64}}(undef, nsamples) for _ in 1:G]
+    Σ_chain = Matrix{Float64}[]
 
-    return μ_chain, Σ_chain, stats
+    # initial state
+    μs = deepcopy(μ0s)
+    Σ = copy(Σ0)
+    accepted = total = 0
+
+    # sampling loop
+    for k in 1:(nsamples + burnin)
+        μs, Σ, ok = rmala_step(p, μs, Σ; τμ=τμ, τΣ=τΣ)
+        accepted += ok; total += 1
+        if k > burnin
+            idx = k - burnin
+            for i in 1:G
+                μ_chains[i][idx] = μs[i]
+            end
+            push!(Σ_chain, copy(Σ))
+        end
+    end
+
+    stats = (accept_rate = accepted / total,
+             τμ = τμ,
+             τΣ = τΣ,
+             burnin = burnin)
+
+    return μ_chains, Σ_chain, stats
 end
