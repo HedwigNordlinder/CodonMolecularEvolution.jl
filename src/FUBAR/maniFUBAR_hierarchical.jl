@@ -169,10 +169,8 @@ If μ0s is not provided, each μ_i is initialized to zero.
 
 Returns:
   μ_chains :: Vector{Vector{Vector{Float64}}} of length G (num_grids).
-                μ_chains[i] is a Vector of nsamples, each an inner
-                Vector{Float64} (length K) representing the sample for grid i.
-                So μ_chains[i][j][k] is the kth category of the jth draw for grid i.
-  Σ_chain  :: Vector{Matrix{Float64}} of length nsamples (shared Σ draws)
+                Each μ_chains[i] contains only accepted samples for grid i.
+  Σ_chain  :: Vector{Matrix{Float64}} containing only accepted Σ samples
   stats     :: Named tuple with fields:
                  • accept_rate :: overall acceptance fraction
                  • τμ, τΣ      :: step sizes used
@@ -194,7 +192,7 @@ function run_rmala(p::HierarchicalRMALAProblem,
     end
 
     # allocate chains
-    μ_chains = [Vector{Vector{Float64}}(undef, nsamples) for _ in 1:G]
+    μ_chains = [Vector{Vector{Float64}}() for _ in 1:G]
     Σ_chain = Matrix{Float64}[]
 
     # initial state
@@ -202,16 +200,32 @@ function run_rmala(p::HierarchicalRMALAProblem,
     Σ = copy(Σ0)
     accepted = total = 0
 
-    # sampling loop
-    for k in 1:(nsamples + burnin)
+    # burn-in phase
+    for k in 1:burnin
         μs, Σ, ok = rmala_step(p, μs, Σ; τμ=τμ, τΣ=τΣ)
-        accepted += ok; total += 1
-        if k > burnin
-            idx = k - burnin
+        accepted += ok
+        total += 1
+        if progress && k % 100 == 0
+            println("Burn-in: $k/$burnin iterations, acceptance rate: $(accepted/total)")
+        end
+    end
+
+    # sampling phase - run exactly nsamples iterations
+    for k in 1:nsamples
+        μs, Σ, ok = rmala_step(p, μs, Σ; τμ=τμ, τΣ=τΣ)
+        accepted += ok
+        total += 1
+        
+        if ok
+            # Only store accepted samples
             for i in 1:G
-                μ_chains[i][idx] = μs[i]
+                push!(μ_chains[i], copy(μs[i]))
             end
             push!(Σ_chain, copy(Σ))
+        end
+        
+        if progress && k % 100 == 0
+            println("Sampling: $k/$nsamples iterations, acceptance rate: $(accepted/total)")
         end
     end
 
