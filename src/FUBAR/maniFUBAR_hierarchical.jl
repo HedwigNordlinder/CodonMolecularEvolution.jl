@@ -223,22 +223,30 @@ function run_rmala(p::HierarchicalRMALAProblem,
     μs = deepcopy(μ0s)
     Σ = copy(Σ0)
     accepted = total = 0
+    recent_accepted = recent_total = 0
 
     # burn-in phase
     for k in 1:burnin
         μs, Σ, ok = rmala_step(p, μs, Σ; τμ=τμ, τΣ=τΣ)
         accepted += ok
         total += 1
+        recent_accepted += ok
+        recent_total += 1
+        
         if progress && k % 100 == 0
-            println("Burn-in: $k/$burnin iterations, acceptance rate: $(accepted/total)")
+            println("Burn-in: $k/$burnin iterations, recent acceptance rate: $(recent_accepted/recent_total)")
+            recent_accepted = recent_total = 0  # Reset for next window
         end
     end
 
     # sampling phase - run exactly nsamples iterations
+    recent_accepted = recent_total = 0  # Reset counters for sampling phase
     for k in 1:nsamples
         μs, Σ, ok = rmala_step(p, μs, Σ; τμ=τμ, τΣ=τΣ)
         accepted += ok
         total += 1
+        recent_accepted += ok
+        recent_total += 1
 
         if ok
             # Only store accepted samples
@@ -249,7 +257,8 @@ function run_rmala(p::HierarchicalRMALAProblem,
         end
 
         if progress && k % 100 == 0
-            println("Sampling: $k/$nsamples iterations, acceptance rate: $(accepted/total)")
+            println("Sampling: $k/$nsamples iterations, recent acceptance rate: $(recent_accepted/recent_total)")
+            recent_accepted = recent_total = 0  # Reset for next window
         end
     end
 
