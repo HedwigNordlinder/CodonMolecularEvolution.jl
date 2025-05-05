@@ -40,9 +40,10 @@ function logposterior(p::HierarchicalRMALAProblem, μs::Vector{Vector{Float64}},
 
     # Wishart prior on Σ
     n, ν0 = dimΣ(p), p.ν0
-    F = cholesky(Symmetric(Σ))
-    logdetΣ = 2 * sum(log, diag(F.U))
-    logprior_Σ = -0.5 * (ν0 + n + 1) * logdetΣ - 0.5 * sum(abs2, F \ cholesky(p.Σ0).U)
+    F      = cholesky(Symmetric(Σ))
+    logdetΣ = 2sum(log, diag(F.U))
+    logprior_Σ = ((ν0 - n - 1) / 2) * logdetΣ
+               - 0.5 * tr(inv(p.Σ0) * Σ)
 
     # Gaussian priors μ_i ~ N(0, Σ)
     Σinv = Matrix(F \ (F' \ I))
@@ -87,73 +88,89 @@ end
 #  Riemannian gradient wrt Σ
 # ─────────────────────────────────────────────────────────────────────────────
 function gradE_logp_Σ(p::HierarchicalRMALAProblem, μs::Vector{Vector{Float64}}, Σ::Matrix{Float64})
-    n, ν0 = dimΣ(p), p.ν0
-    F = cholesky(Symmetric(Σ))
-    Σinv = Matrix(F \ (F' \ I))
+    n, ν0   = dimΣ(p), p.ν0
+    Σ0inv   = inv(p.Σ0)
 
-    S = zeros(n, n)
+    # sum of μ μᵀ
+    S = zeros(n,n)
     for μ in μs
         S .+= μ * μ'
     end
 
-    return 0.5 * (ν0 - n - 1) * Σinv - 0.5 * S - 0.5 * inv(p.Σ0)
-end
+    Σinv = inv(Σ)
 
+    # Wishart‐prior term:  (ν0−n−1)/2 Σ⁻¹ − ½ Σ0⁻¹
+    grad_prior = ((ν0 - n - 1) / 2) * Σinv .- 0.5 * Σ0inv
+
+    # μ‐prior term:  ½ Σ⁻¹ S Σ⁻¹
+    grad_μ = 0.5 * Σinv * S * Σinv
+
+    return grad_prior .+ grad_μ
+end
 gradR_logp_Σ(p, μs, Σ) = Σ * gradE_logp_Σ(p, μs, Σ) * Σ
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  One joint RMALA step for hierarchical model
 # ─────────────────────────────────────────────────────────────────────────────
 function rmala_step(p::HierarchicalRMALAProblem, μs, Σ; τμ=1e-2, τΣ=1e-2)
-    # drifts
-    Gμ = gradE_logp_μs(p, μs, Σ)
-    drift_μs = [0.5 * g for g in Gμ]
-    drift_Σ = 0.5 * gradR_logp_Σ(p, μs, Σ) + geo_drift(Σ)
+    # compute Euclidean gradients Gμ and Riemannian drift for Σ
+    Gμ      = gradE_logp_μs(p, μs, Σ)              # each ∇_μ log π
+    drift_μ = [0.5*g for g in Gμ]                    # = (ε/2) coeff
+    drift_Σ = 1.0*gradR_logp_Σ(p, μs, Σ) + geo_drift(Σ)  
+    #           ^^^^^ keep geo_drift as extra manifold penalty
 
-    # propose μ candidates (Euclidean MALA)
+    # 2a. propose μ (classical MALA: x' = x + τμ⋅drift_μ + √τμ⋅ξ)
     μs_cand = Vector{Vector{Float64}}(undef, num_grids(p))
     for i in 1:num_grids(p)
         ξμ = randn(length(μs[i]))
-        μs_cand[i] = μs[i] + τμ * drift_μs[i] + sqrt(2τμ) * ξμ
+        μs_cand[i] = μs[i] .+ τμ .* drift_μ[i] .+ sqrt(τμ) .* ξμ
     end
 
-    # propose Σ candidate (SPD R-MALA)
-    n = dimΣ(p)
-    E = Symmetric(randn(n, n))
-    sqrtΣ = sqrt(Σ)
-    ξΣ = sqrtΣ * E * sqrtΣ
-    V = τΣ * drift_Σ + sqrt(2τΣ) * ξΣ
+    # 2b. propose Σ on manifold
+    n      = dimΣ(p)
+    Z      = randn(n,n); E = Symmetric(Z + Z', :U)  # isotropic tangent noise
+    sqrtΣ  = sqrt(Σ)
+    ξΣ     = sqrtΣ * E * sqrtΣ
+    V      = τΣ .* drift_Σ .+ sqrt(τΣ) .* ξΣ
     Σ_cand = expmap_spd(Σ, V)
 
-    # log proposal densities
+    # 3. updated log‐proposal densities for var=ε
     function logq_euc(to, from, drift, τ)
         δ = to .- from .- τ .* drift
-        return -0.5 * length(from) * log(4π * τ) - dot(δ, δ) / (4τ)
+        D = length(from)
+        return -0.5*D*log(2π*τ) - dot(δ,δ)/(2τ)
     end
     function logq_spd(to, from, drift, τ)
-        V = logmap_spd(from, to)
-        S = V .- τ .* drift
-        d = size(from, 1) * (size(from, 1) + 1) ÷ 2
-        F = cholesky(Symmetric(from))
-        Y = F \ (F' \ S)
-        quad = tr(Y * Y)
-        return -0.5 * d * log(4π * τ) + 0.5 * (size(from, 1) + 1) * sum(log, diag(F.U)) - quad / (4τ)
+        V    = logmap_spd(from, to)
+        S    = V .- τ .* drift
+        d    = size(from,1)*(size(from,1)+1) ÷ 2
+        F    = cholesky(Symmetric(from))
+        Y    = F \ (F' \ S)
+        quad = tr(Y*Y)
+        # note: we keep the usual Jacobian term from the SPD‐MALA derivation
+        return -0.5*d*log(2π*τ)
+               + 0.5*(size(from,1)+1)*sum(log,diag(F.U))
+               - quad/(2τ)
     end
 
-    # forward and reverse densities
-    logq_fwd = sum(logq_euc.(μs_cand, μs, drift_μs, τμ)) + logq_spd(Σ_cand, Σ, drift_Σ, τΣ)
-    # reverse drifts
-    Gμ_p = gradE_logp_μs(p, μs_cand, Σ_cand)
-    drift_μs_p = [0.5 * g for g in Gμ_p]
-    drift_Σ_p = 0.5 * gradR_logp_Σ(p, μs_cand, Σ_cand) + geo_drift(Σ_cand)
-    logq_rev = sum(logq_euc.(μs, μs_cand, drift_μs_p, τμ)) + logq_spd(Σ, Σ_cand, drift_Σ_p, τΣ)
+    # 4. MH‐acceptance
+    logq_fwd = sum(logq_euc.(μs_cand, μs, drift_μ, τμ)) +
+               logq_spd(Σ_cand, Σ, drift_Σ, τΣ)
+    # reverse‐drift at the proposal
+    Gμ_p      = gradE_logp_μs(p, μs_cand, Σ_cand)
+    drift_μ_p = [0.5*g for g in Gμ_p]
+    drift_Σ_p = Σ_cand * gradE_logp_Σ(p, μs_cand, Σ_cand) * Σ_cand .+ geo_drift(Σ_cand)
+    logq_rev  = sum(logq_euc.(μs, μs_cand, drift_μ_p, τμ)) +
+                logq_spd(Σ, Σ_cand, drift_Σ_p, τΣ)
 
-    # acceptance
-    logα = logposterior(p, μs_cand, Σ_cand) - logposterior(p, μs, Σ) + logq_rev - logq_fwd
+    logα = logposterior(p, μs_cand, Σ_cand) -
+           logposterior(p, μs,     Σ)     +
+           logq_rev - logq_fwd
+
     if log(rand()) < logα
         return μs_cand, Σ_cand, true
     else
-        return μs, Σ, false
+        return μs,      Σ,      false
     end
 end
 
