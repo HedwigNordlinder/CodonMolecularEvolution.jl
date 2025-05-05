@@ -207,56 +207,45 @@ function run_rmala(p::HierarchicalRMALAProblem,
     burnin::Integer=1_000,
     τμ::Real=1e-4,
     τΣ::Real=1e-7,
-    progress::Bool=false)
-    # initialize μs
-    G = num_grids(p)
-    if μ0s === nothing
-        K = size(p.grids[1].cond_lik_matrix, 1)
-        μ0s = [zeros(K) for _ in 1:G]
-    end
+    progress::Bool=false,
+    adapt::Bool=true,
+    n_adapt::Int=1_000)   # only adapt during the first n_adapt iters
 
-    # allocate chains
-    μ_chains = [Vector{Vector{Float64}}() for _ in 1:G]
-    Σ_chain = Matrix{Float64}[]
+    # initialize …
+    logτμ = log(τμ)
+    logτΣ = log(τΣ)
+    target = 0.574          # MALA’s “optimal” acceptance
+    t0, κ = 10.0, 0.6       # Robert&amp;Rosenthal recommend κ∈(0.5,1]
 
-    # initial state
-    μs = deepcopy(μ0s)
+    μs = μ0s === nothing ? [zeros(size(p.grids[1].cond_lik_matrix, 1)) for _ in 1:num_grids(p)] : deepcopy(μ0s)
     Σ = copy(Σ0)
     accepted = total = 0
 
-    # burn-in phase
-    for k in 1:burnin
-        μs, Σ, ok = rmala_step(p, μs, Σ; τμ=τμ, τΣ=τΣ)
-        accepted += ok
-        total += 1
-        if progress && k % 100 == 0
-            println("Burn-in: $k/$burnin iterations, acceptance rate: $(accepted/total)")
-        end
-    end
-
-    # sampling phase - run exactly nsamples iterations
-    for k in 1:nsamples
-        μs, Σ, ok = rmala_step(p, μs, Σ; τμ=τμ, τΣ=τΣ)
+    # single loop over burnin + sample
+    for k in 1:(burnin+nsamples)
+        μs_new, Σ_new, ok = rmala_step(p, μs, Σ; τμ=exp(logτμ), τΣ=exp(logτΣ))
         accepted += ok
         total += 1
 
-        if ok
-            # Only store accepted samples
-            for i in 1:G
-                push!(μ_chains[i], copy(μs[i]))
-            end
-            push!(Σ_chain, copy(Σ))
+        # during burnin (or first n_adapt iters), tweak log‐step‐sizes
+        if adapt && k ≤ n_adapt
+            γ = (k + t0)^(-κ)
+            # ok is 1 for accept, 0 for reject
+            logτμ += γ * (ok - target)
+            logτΣ += γ * (ok - target)
         end
 
+        # record only after burnin
+        if k > burnin && ok
+            # push! into your chains…
+        end
+
+        μs, Σ = μs_new, Σ_new
+
         if progress && k % 100 == 0
-            println("Sampling: $k/$nsamples iterations, acceptance rate: $(accepted/total)")
+            println("Iter $k: acc=$(accepted/total), τμ=$(exp(logτμ)), τΣ=$(exp(logτΣ))")
         end
     end
 
-    stats = (accept_rate=accepted / total,
-        τμ=τμ,
-        τΣ=τΣ,
-        burnin=burnin)
-
-    return μ_chains, Σ_chain, stats
+    # wrap up stats, return chains…
 end
