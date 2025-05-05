@@ -195,6 +195,7 @@ Returns:
   μ_chains :: Vector{Vector{Vector{Float64}}} of length G (num_grids).
                 Each μ_chains[i] contains only accepted samples for grid i.
   Σ_chain  :: Vector{Matrix{Float64}} containing only accepted Σ samples
+  logp_chain :: Vector{Float64} containing logposterior values for accepted samples
   stats     :: Named tuple with fields:
                  • accept_rate :: overall acceptance fraction
                  • τμ, τΣ      :: step sizes used
@@ -218,6 +219,7 @@ function run_rmala(p::HierarchicalRMALAProblem,
     # allocate chains
     μ_chains = [Vector{Vector{Float64}}() for _ in 1:G]
     Σ_chain = Matrix{Float64}[]
+    logp_chain = Float64[]  # New chain for logposterior values
 
     # initial state
     μs = deepcopy(μ0s)
@@ -254,6 +256,7 @@ function run_rmala(p::HierarchicalRMALAProblem,
                 push!(μ_chains[i], copy(μs[i]))
             end
             push!(Σ_chain, copy(Σ))
+            push!(logp_chain, logposterior(p, μs, Σ))  # Store logposterior value
         end
 
         if progress && k % 100 == 0
@@ -267,5 +270,5 @@ function run_rmala(p::HierarchicalRMALAProblem,
         τΣ=τΣ,
         burnin=burnin)
 
-    return μ_chains, Σ_chain, stats
+    return μ_chains, Σ_chain, logp_chain, stats
 end
