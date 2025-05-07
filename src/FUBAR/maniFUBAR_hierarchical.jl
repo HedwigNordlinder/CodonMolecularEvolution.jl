@@ -87,7 +87,7 @@ function logprior_Σ(p::HierarchicalRMLALKJ, Σ::Matrix{Float64})
 
     # notice the d.^2 here:
     term1 = sum((K - n - 1) .* log.(d) .- 0.5 .* (d .^ 2))
-    valR, _ = logdet(R)
+    valR = logdet(R)
     term2 = (p.η - 1) * valR
 
     return term1 + term2
