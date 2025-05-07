@@ -14,11 +14,22 @@ geo_drift(X) = -(size(X, 1) + 1) / 2 * X
 # ─────────────────────────────────────────────────────────────────────────────
 #  Problem definition: multiple FUBARgrids with a shared covariance matrix Σ
 # ─────────────────────────────────────────────────────────────────────────────
-struct HierarchicalRMALAProblem
-    grids::Vector{FUBARgrid}    # List of FUBARgrids
-    Σ0::Matrix{Float64}         # Prior scale (Σ₀) for Σ
-    ν0::Float64                 # Degrees of freedom for Σ prior
+abstract type AbstractHierarchicalRMALAProblem end
+
+struct HierarchicalRMALAWishart <: AbstractHierarchicalRMALAProblem
+    grids::Vector{FUBARgrid}
+    Σ0::Matrix{Float64}    # scale parameter
+    ν0::Float64            # degrees of freedom
 end
+
+struct HierarchicalRMLALKJ <: AbstractHierarchicalRMALAProblem
+    grids::Vector{FUBARgrid}
+    η::Float64             # LKJ shape parameter
+end
+
+# alias for dispatch clarity
+const WishartProblem = HierarchicalRMALAWishart
+const LKJProblem = HierarchicalRMLALKJ
 
 # number of grids and dimension of Σ
 num_grids(p::HierarchicalRMALAProblem) = length(p.grids)
@@ -27,34 +38,33 @@ dimΣ(p::HierarchicalRMALAProblem) = size(p.Σ0, 1)
 # ─────────────────────────────────────────────────────────────────────────────
 #  Joint log-posterior of all data, μs, and Σ
 # ─────────────────────────────────────────────────────────────────────────────
-function logposterior(p::HierarchicalRMALAProblem,
+function logprior_Σ(p::WishartProblem, Σ::Matrix{Float64})
+    n, ν0 = size(Σ, 1), p.ν0
+    F = cholesky(Symmetric(Σ))
+    logdetΣ = 2sum(log, diag(F.U))
+    lp = ((ν0 - n - 1) / 2) * logdetΣ - 0.5 * tr(inv(p.Σ0) * Σ)
+    return lp
+end
+
+function gradE_logp_Σ(p::LKJProblem,
     μs::Vector{Vector{Float64}},
     Σ::Matrix{Float64})
-    # data likelihood
-    loglik = 0.0
-    for (i, grid) in enumerate(p.grids)
-        L = grid.cond_lik_matrix   # K × N
-        μ = μs[i]
-        log_soft = μ .- logsumexp(μ)
-        soft = exp.(log_soft)
-        loglik += sum(log.(soft' * L))
-    end
+    # Let d = sqrt.(diag(Σ)), D = diagm(d)
+    d = sqrt.(diag(Σ))
+    Dinv2 = Diagonal(1 ./ (d .^ 2))
 
-    # Wishart prior on Σ: p(Σ) ∝ |Σ|^((ν0−n−1)/2) exp[−½ tr(Σ0⁻¹ Σ)]
-    n, ν0 = dimΣ(p), p.ν0
-    F = cholesky(Symmetric(Σ))
-    logdetΣ = 2 * sum(log, diag(F.U))
-    logprior_Σ = ((ν0 - n - 1) / 2) * logdetΣ
-    -0.5 * tr(inv(p.Σ0) * Σ)
+    # 1) gradient of ∑ [(k−n−1) d_i − d_i^2/2 ]
+    n = size(Σ, 1)
+    k = size(p.grids[1].cond_lik_matrix, 1)
+    # ∂/∂Σ of (k−n−1)d_i gives (k−n−1)/(2 d_i) at Σ_{ii}
+    # ∂/∂Σ of (−d_i^2/2) gives −1/2 at Σ_{ii}
+    Gdiag = ((k - n - 1) ./ (2d)) .- 0.5
+    G1 = Diagonal(Gdiag)
 
-    # Gaussian priors μ_i ~ N(0, Σ)
-    Σinv = inv(Σ)
-    logprior_μ = 0.0
-    for μ in μs
-        logprior_μ += -0.5 * dot(μ, Σinv * μ)
-    end
+    # 2) gradient of (η−1)*log det R  =  (η−1)*(Σ^{-1} − D^{-2})
+    G2 = (p.η - 1) * (inv(Σ) - Dinv2)
 
-    return loglik + logprior_Σ + logprior_μ
+    return G1 .+ G2
 end
 # ─────────────────────────────────────────────────────────────────────────────
 #  Euclidean gradient wrt each μ_i (softmax likelihood + Gaussian prior)
@@ -88,24 +98,50 @@ end
 # ─────────────────────────────────────────────────────────────────────────────
 #  Riemannian gradient wrt Σ
 # ─────────────────────────────────────────────────────────────────────────────
-function gradE_logp_Σ(p::HierarchicalRMALAProblem,
+function gradE_logp_Σ(p::WishartProblem,
     μs::Vector{Vector{Float64}},
     Σ::Matrix{Float64})
-    n, ν0 = dimΣ(p), p.ν0
+    # (we re‐construct the Wishart version exactly as before)
+    n, ν0 = size(Σ, 1), p.ν0
     Σ0inv = inv(p.Σ0)
+    Σinv = inv(Σ)
 
-    # S = ∑ μ μᵀ
     S = zeros(n, n)
     for μ in μs
         S .+= μ * μ'
     end
 
-    Σinv = inv(Σ)
+    return ((ν0 - n - 1) / 2) * Σinv .- 0.5 * Σ0inv .+ 0.5 * Σinv * S * Σinv
+end
+function logprior_Σ(p::LKJProblem, Σ::Matrix{Float64})
+    n = size(Σ, 1)
+    # decompose Σ = D R D  with  D=diag(d₁,…,d_n),  R correlation
+    d = sqrt.(diag(Σ))
+    R = inv(Diagonal(d)) * Σ * inv(Diagonal(d))
 
-    # grad = Wishart‐term + μ‐term
-    #   = (ν0−n−1)/2·Σ⁻¹ − ½·Σ0⁻¹ + ½·Σ⁻¹ S Σ⁻¹
-    return ((ν0 - n - 1) / 2) * Σinv .- 0.5 * Σ0inv
-    .+0.5 * Σinv * S * Σinv
+    term1 = sum((p.grids[1].cond_lik_matrix|>size)[1] .- n .- 1 .* log.(d) .- d .^ 2 / 2)
+    term2 = (p.η - 1) * logdet(R)
+    return term1 + term2
+end
+function gradE_logp_Σ(p::LKJProblem,
+    μs::Vector{Vector{Float64}},
+    Σ::Matrix{Float64})
+    # Let d = sqrt.(diag(Σ)), D = diagm(d)
+    d = sqrt.(diag(Σ))
+    Dinv2 = Diagonal(1 ./ (d .^ 2))
+
+    # 1) gradient of ∑ [(k−n−1) d_i − d_i^2/2 ]
+    n = size(Σ, 1)
+    k = size(p.grids[1].cond_lik_matrix, 1)
+    # ∂/∂Σ of (k−n−1)d_i gives (k−n−1)/(2 d_i) at Σ_{ii}
+    # ∂/∂Σ of (−d_i^2/2) gives −1/2 at Σ_{ii}
+    Gdiag = ((k - n - 1) ./ (2d)) .- 0.5
+    G1 = Diagonal(Gdiag)
+
+    # 2) gradient of (η−1)*log det R  =  (η−1)*(Σ^{-1} − D^{-2})
+    G2 = (p.η - 1) * (inv(Σ) - Dinv2)
+
+    return G1 .+ G2
 end
 gradR_logp_Σ(p, μs, Σ) = Σ * gradE_logp_Σ(p, μs, Σ) * Σ
 gradR_logp_Σ(p, μs, Σ) = Σ * gradE_logp_Σ(p, μs, Σ) * Σ
@@ -234,7 +270,7 @@ function run_rmala(p::HierarchicalRMALAProblem,
         total += 1
         recent_accepted += ok
         recent_total += 1
-        
+
         if progress && k % 100 == 0
             println("Burn-in: $k/$burnin iterations, recent acceptance rate: $(recent_accepted/recent_total)")
             recent_accepted = recent_total = 0  # Reset for next window
