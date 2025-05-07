@@ -43,6 +43,7 @@ export
     FIFEFUBAR,
     FUBARgrid,
     RMALAProblem,
-    HierarchicalRMALAProblem,
+    WishartProblem,
+    LKJProblem,
     run_rmala
 end
