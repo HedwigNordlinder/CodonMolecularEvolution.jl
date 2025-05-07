@@ -274,14 +274,3 @@ function run_rmala(p::AbstractHierarchicalRMALAProblem,
     stats = (accept_rate=accepted/total, τμ=τμ, τΣ=τΣ, burnin=burnin)
     return μ_chain, Σ_chain, logp_chain, stats
 end
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  Usage
-# ─────────────────────────────────────────────────────────────────────────────
-# Wishart‐prior
-p_wish = HierarchicalRMALAWishart(grids, Σ0, ν0)
-
-# χ–LKJ‐prior
-p_lkj  = HierarchicalRMLALKJ(grids, η=2.0)
-
-μ_chains, Σ_chain, logp_chain, stats = run_rmala(p_lkj, Σ0, 10_000; progress=true)
