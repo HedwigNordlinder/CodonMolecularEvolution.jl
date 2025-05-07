@@ -42,6 +42,7 @@ export
     FUBARgrid,
     RMALAProblem,
     WishartProblem,
-    LKJProblem,
+    HierarchicalRMALAWishart,
+    HierarchicalRMLALKJ,
     run_rmala
 end
