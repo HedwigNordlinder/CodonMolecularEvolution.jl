@@ -33,6 +33,7 @@ end
 struct HierarchicalRMLALKJ <: AbstractHierarchicalRMALAProblem
     grids::Vector{FUBARgrid}
     η::Float64             # LKJ shape
+    k::Int                  # χ dof
 end
 
 num_grids(p::AbstractHierarchicalRMALAProblem) = length(p.grids)
@@ -75,43 +76,50 @@ function gradE_logp_Σ(p::HierarchicalRMALAWishart,
     return ((ν0 - n - 1) / 2) * Σinv .- 0.5 * Σ0inv .+ 0.5 * Σinv * S * Σinv
 end
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  Extended χ–LKJ prior on Σ
-# ─────────────────────────────────────────────────────────────────────────────
+# ----------------------------------------------------------------------------
+#  Extended χ–LKJ prior on Σ = D R D  with d_i∼χ(k),  R∼LKJ(η)
+#  p(Σ) ∝ ∏ d_i^(k−n−1) e^(−d_i^2/2) ⋅ (det R)^(η−1)
+# ----------------------------------------------------------------------------
 function logprior_Σ(p::HierarchicalRMLALKJ, Σ::Matrix{Float64})
-    n = size(Σ, 1)
-    d = sqrt.(diag(Σ))             # d_i = sqrt(Σ_{ii})
+    n = size(Σ,1)
+    # extract d_i = sqrt(Σ_ii)
+    d = sqrt.(diag(Σ))
     D = Diagonal(d)
+    # correlation matrix
     R = inv(D) * Σ * inv(D)
-    K = size(p.grids[1].cond_lik_matrix, 1)
+    # dimensionality of each μ grid
+    k = p.k
 
-    # notice the d.^2 here:
-    term1 = sum((K - n - 1) .* log.(d) .- 0.5 .* (d .^ 2))
-    valR = logdet(R)
-    term2 = (p.η - 1) * valR
+    # ∑[(k−n−1)·log d_i  − ½ d_i^2]
+    term1 = sum((k - n - 1) .* log.(d) .- 0.5 .* (d .^ 2))
+
+    # Julia's logdet(R) returns a single Float64 for SPD matrices
+    term2 = (p.η - 1) * logdet(R)
 
     return term1 + term2
 end
 
-
 function gradE_logp_Σ(p::HierarchicalRMLALKJ,
-    μs::Vector{Vector{Float64}},
-    Σ::Matrix{Float64})
-    n = size(Σ, 1)
-    d = sqrt.(diag(Σ))
-    Dinv2 = Diagonal(1 ./ (d .^ 2))
-    K = size(p.grids[1].cond_lik_matrix, 1)
+                      μs::Vector{Vector{Float64}},
+                      Σ::Matrix{Float64})
+    n      = size(Σ,1)
+    # d_i = sqrt(Σ_ii), and diagΣ = Σ_ii = d_i^2
+    diagΣ  = diag(Σ)
+    d = sqrt.(diagΣ)
+    Dinv2 = Diagonal(1 ./ (diagΣ))
+    k = p.k
 
-    # ∂/∂Σ_{ii} [ (K−n−1) log d_i − ½ d_i^2 ]
-    #    = (K−n−1)/(2 d_i^2)  −  ½
-    diag_grad = ((K - n - 1) ./ (2 .* d .^ 2)) .- 0.5
+    # ∂/∂Σ_ii of (k−n−1)·log d_i − ½ d_i^2
+    #   = (k−n−1)/(2 Σ_ii) − ½
+    diag_grad = ((k - n - 1) ./ (2 .* diagΣ)) .- 0.5
     G1 = Diagonal(diag_grad)
 
-    # ∂/∂Σ [ (η−1) log det R ] = (η−1)(Σ⁻¹ − D⁻²)
+    # ∂/∂Σ (η−1) logdet(R) = (η−1)(Σ⁻¹ − D⁻²)
     G2 = (p.η - 1) .* (inv(Σ) .- Dinv2)
 
     return G1 .+ G2
 end
+
 # lift to Riemannian gradient
 gradR_logp_Σ(p, μs, Σ) = Σ * gradE_logp_Σ(p, μs, Σ) * Σ
 
