@@ -44,5 +44,6 @@ export
     WishartProblem,
     HierarchicalRMALAWishart,
     HierarchicalRMLALKJ,
+    HierarchicalRMALARiemGauss,
     run_rmala
 end
