@@ -86,7 +86,7 @@ function logprior_Σ(p::HierarchicalRMLALKJ, Σ::Matrix{Float64})
     K       = size(p.grids[1].cond_lik_matrix,1)
     # (K-n-1)*log d - ½ d^2
     term1   = sum((K - n - 1) .* log.(d) .- 0.5 .* d.^2)
-    valR,_  = logdet(R)
+    valR  = logdet(R)
     term2   = (p.η - 1) * valR
     return term1 + term2
 end
