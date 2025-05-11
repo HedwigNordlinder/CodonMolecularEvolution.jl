@@ -106,11 +106,7 @@ function gradE_logp_Σ(
     Gx = inv(X) * T
     G_gauss = -(1 / σ2) * iM0h * Gx * iM0h
 
-    # the new log‐det term
-    n = size(Σ, 1)
-    G_logvol = -((n + 1) / 2) * inv(Σ)
-
-    return G_gauss .+ G_logvol
+    return G_gauss 
 end
 # ----------------------------------------------------------------------------
 #  Extended χ–LKJ prior on Σ = D R D  with d_i∼χ(k),  R∼LKJ(η)
