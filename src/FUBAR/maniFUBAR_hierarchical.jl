@@ -94,16 +94,21 @@ function logprior_Σ(p::HierarchicalRMALARiemGauss, Σ::Matrix{Float64})
     return -0.5/(p.σ^2) * tr(T*T)
 end
 
-function gradE_logp_Σ(p::HierarchicalRMALARiemGauss,
-                     μs::Vector{Vector{Float64}},
-                     Σ::Matrix{Float64})
-    # Euclidean gradient of −½/σ² ·‖logm(M0^(-1/2) Σ M0^(-1/2))‖²
+function gradE_logp_Σ(p::HierarchicalRMALARiemGauss, Σ)
+    σ2 = p.σ^2
+    # compute T = log_{M0}(Σ)
     T = logmap_spd(p.M0, Σ)
-    M0h = sqrt(p.M0)
+
+    # form the half‐powers
+    M0h   = sqrt(p.M0)
     invM0h = inv(M0h)
-    Σh = sqrt(Σ)
-    invΣh = inv(Σh)
-    return (1/(p.σ^2)) * (invΣh * T * invΣh)
+    Σh    = sqrt(Σ)
+
+    # now the Euclidean gradient of –½/σ² tr[T^2]:
+    #    ∇_Σ = −(1/σ²) · M0h⁻¹ * T * M0h⁻¹
+    # but *pulled back* by the SPD metric gives two more Σ^½’s,
+    # so the Riemannian gradient is Σ * (that Euclid grad) * Σ.
+    return −(1/σ2) .* (invM0h * T * invM0h)
 end
 
 # ----------------------------------------------------------------------------
