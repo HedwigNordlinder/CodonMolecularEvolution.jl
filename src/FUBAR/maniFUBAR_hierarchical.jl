@@ -120,6 +120,25 @@ end
 #  Extended χ–LKJ prior on Σ = D R D  with d_i∼χ(k),  R∼LKJ(η)
 #  p(Σ) ∝ ∏ d_i^(k−n−1) e^(−d_i^2/2) ⋅ (det R)^(η−1)
 # ----------------------------------------------------------------------------
+function logprior_Σ(p::HierarchicalRMLALKJ, Σ::Matrix{Float64})
+    n = size(Σ, 1)
+    # extract d_i = sqrt(Σ_ii)
+    d = sqrt.(diag(Σ))
+    D = Diagonal(d)
+    # correlation matrix
+    R = inv(D) * Σ * inv(D)
+    # dimensionality of each μ grid
+    k = p.k
+
+    # ∑[(k−n−1)·log d_i  − ½ d_i^2]
+    term1 = sum((k - n - 1) .* log.(d) .- 0.5 .* (d .^ 2))
+
+    # Julia's logdet(R) returns a single Float64 for SPD matrices
+    term2 = (p.η - 1) * logdet(R)
+
+    return term1 + term2
+end
+
 function gradE_logp_Σ(p::HierarchicalRMLALKJ,
     μs::Vector{Vector{Float64}},
     Σ::Matrix{Float64})
@@ -146,26 +165,6 @@ function gradE_logp_Σ(p::HierarchicalRMLALKJ,
     return G1 .+ G2 .+ Gμ
 end
 
-function gradE_logp_Σ(p::HierarchicalRMLALKJ,
-    μs::Vector{Vector{Float64}},
-    Σ::Matrix{Float64})
-    n = size(Σ, 1)
-    # d_i = sqrt(Σ_ii), and diagΣ = Σ_ii = d_i^2
-    diagΣ = diag(Σ)
-    d = sqrt.(diagΣ)
-    Dinv2 = Diagonal(1 ./ (diagΣ))
-    k = p.k
-
-    # ∂/∂Σ_ii of (k−n−1)·log d_i − ½ d_i^2
-    #   = (k−n−1)/(2 Σ_ii) − ½
-    diag_grad = ((k - n - 1) ./ (2 .* diagΣ)) .- 0.5
-    G1 = Diagonal(diag_grad)
-
-    # ∂/∂Σ (η−1) logdet(R) = (η−1)(Σ⁻¹ − D⁻²)
-    G2 = (p.η - 1) .* (inv(Σ) .- Dinv2)
-
-    return G1 .+ G2
-end
 
 # lift to Riemannian gradient
 gradR_logp_Σ(p, μs, Σ) = Σ * gradE_logp_Σ(p, μs, Σ) * Σ
