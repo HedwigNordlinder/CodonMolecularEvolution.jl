@@ -91,8 +91,7 @@ end
 function logprior_Σ(p::HierarchicalRMALARiemGauss, Σ)
     n = size(Σ, 1)
     T = logmap_spd(p.M0, Σ)
-    return -0.5 / p.σ^2 * tr(T * T)
-    -(n + 1) / 2 * logdet(Σ)
+    return -0.5 / p.σ^2 * tr(T * T) -(n + 1) / 2 * logdet(Σ)
 end
 function gradE_logp_Σ(
     p::HierarchicalRMALARiemGauss,
