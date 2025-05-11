@@ -36,6 +36,18 @@ struct HierarchicalRMLALKJ <: AbstractHierarchicalRMALAProblem
     k::Int                  # χ dof
 end
 
+struct HierarchicalRMALARiemGauss <: AbstractHierarchicalRMALAProblem
+    grids::Vector{FUBARgrid}
+    σ::Float64     # Riemannian "scale"
+    M0::Matrix{Float64}  # Center point on SPD manifold
+end
+
+# Default constructor with identity matrix as center
+function HierarchicalRMALARiemGauss(grids::Vector{FUBARgrid}, σ::Float64)
+    n = length(grids[1].grid)  # Assuming all grids have same dimension
+    HierarchicalRMALARiemGauss(grids, σ, Matrix{Float64}(I, n, n))
+end
+
 num_grids(p::AbstractHierarchicalRMALAProblem) = length(p.grids)
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -75,27 +87,25 @@ function gradE_logp_Σ(p::HierarchicalRMALAWishart,
     end
     return ((ν0 - n - 1) / 2) * Σinv .- 0.5 * Σ0inv .+ 0.5 * Σinv * S * Σinv
 end
-struct HierarchicalRMALARiemGauss <: AbstractHierarchicalRMALAProblem
-    grids::Vector{FUBARgrid}
-    σ::Float64     # Riemannian “scale”
-  end
-  
-  function logprior_Σ(p::HierarchicalRMALARiemGauss, Σ::Matrix{Float64})
-    # squared Riemannian distance = ‖logm(Σ)‖_F^2
-    T = logmap_spd(I, Σ)   # =  logm(Σ)
+
+function logprior_Σ(p::HierarchicalRMALARiemGauss, Σ::Matrix{Float64})
+    # squared Riemannian distance = ‖logm(M0^(-1/2) Σ M0^(-1/2))‖_F^2
+    T = logmap_spd(p.M0, Σ)
     return -0.5/(p.σ^2) * tr(T*T)
-  end
-  
-  function gradE_logp_Σ(p::HierarchicalRMALARiemGauss,
-                       μs::Vector{Vector{Float64}},
-                       Σ::Matrix{Float64})
-    # Euclidean gradient of −½/σ² ·‖logm(Σ)‖²
-    # = 1/σ² · Σ^(−½)·logm(Σ)·Σ^(−½)
-    T = logmap_spd(I, Σ)   # = logm(Σ)
+end
+
+function gradE_logp_Σ(p::HierarchicalRMALARiemGauss,
+                     μs::Vector{Vector{Float64}},
+                     Σ::Matrix{Float64})
+    # Euclidean gradient of −½/σ² ·‖logm(M0^(-1/2) Σ M0^(-1/2))‖²
+    T = logmap_spd(p.M0, Σ)
+    M0h = sqrt(p.M0)
+    invM0h = inv(M0h)
     Σh = sqrt(Σ)
     invΣh = inv(Σh)
     return (1/(p.σ^2)) * (invΣh * T * invΣh)
-  end
+end
+
 # ----------------------------------------------------------------------------
 #  Extended χ–LKJ prior on Σ = D R D  with d_i∼χ(k),  R∼LKJ(η)
 #  p(Σ) ∝ ∏ d_i^(k−n−1) e^(−d_i^2/2) ⋅ (det R)^(η−1)
