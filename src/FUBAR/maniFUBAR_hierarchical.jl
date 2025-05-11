@@ -17,12 +17,7 @@ logmap_spd(X, Y) = begin
     Xh * log(invXh * Y * invXh) * Xh
 end
 
-# Replaced geo drift 
-geo_drift(X) = begin
-    n = size(X,1)              # matrix is n×n
-    d = n*(n+1) ÷ 2            # manifold dimension
-    -((d + 1)/2) * X
-  end
+geo_drift(X) = -(size(X, 1) + 1) / 2 * X
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  Problem types
@@ -96,34 +91,23 @@ end
 function logprior_Σ(p::HierarchicalRMALARiemGauss, Σ::Matrix{Float64})
     # squared Riemannian distance = ‖logm(M0^(-1/2) Σ M0^(-1/2))‖_F^2
     T = logmap_spd(p.M0, Σ)
-    return -0.5/(p.σ^2) * tr(T*T)
+    return -0.5 / (p.σ^2) * tr(T * T)
 end
-
-function gradE_logp_Σ(p::HierarchicalRMALARiemGauss,
-                      μs::Vector{Vector{Float64}},
-                      Σ::Matrix{Float64})
-    σ2 = p.σ^2
-    # compute T = log_{M0}(Σ)
-    T = logmap_spd(p.M0, Σ)
-
-    # form the half‐powers
-    M0h   = sqrt(p.M0)
-    invM0h = inv(M0h)
-    Σh    = sqrt(Σ)
-
-    # now the Euclidean gradient of –½/σ² tr[T^2]:
-    #    ∇_Σ = −(1/σ²) · M0h⁻¹ * T * M0h⁻¹
-    # but *pulled back* by the SPD metric gives two more Σ^½’s,
-    # so the Riemannian gradient is Σ * (that Euclid grad) * Σ.
-    return −(1/σ2) .* (invM0h * T * invM0h)
+function gradE_logp_Σ(p::HierarchicalRMALARiemGauss, μs::Vector{Vector{Float64}}, Σ::Matrix{Float64})
+    σ2   = p.σ^2
+    M0h  = sqrt(p.M0)           # M0^(1/2)
+    iM0h = inv(M0h)             # M0^(-1/2)
+    X    = iM0h * Σ * iM0h
+    T    = log(X)               # = M0^(-1/2) * logmap_spd(M0,Σ) * M0^(-1/2)
+    Gx   = inv(X) * T           # ∇_X [–½/σ²||log(X)||²]
+    return   -(1/σ2) * iM0h * Gx * iM0h
 end
-
 # ----------------------------------------------------------------------------
 #  Extended χ–LKJ prior on Σ = D R D  with d_i∼χ(k),  R∼LKJ(η)
 #  p(Σ) ∝ ∏ d_i^(k−n−1) e^(−d_i^2/2) ⋅ (det R)^(η−1)
 # ----------------------------------------------------------------------------
-function logprior_Σ(p::HierarchicalRMLALKJ,Σ::Matrix{Float64})
-    n = size(Σ,1)
+function logprior_Σ(p::HierarchicalRMLALKJ, Σ::Matrix{Float64})
+    n = size(Σ, 1)
     # extract d_i = sqrt(Σ_ii)
     d = sqrt.(diag(Σ))
     D = Diagonal(d)
@@ -142,11 +126,11 @@ function logprior_Σ(p::HierarchicalRMLALKJ,Σ::Matrix{Float64})
 end
 
 function gradE_logp_Σ(p::HierarchicalRMLALKJ,
-                      μs::Vector{Vector{Float64}},
-                      Σ::Matrix{Float64})
-    n      = size(Σ,1)
+    μs::Vector{Vector{Float64}},
+    Σ::Matrix{Float64})
+    n = size(Σ, 1)
     # d_i = sqrt(Σ_ii), and diagΣ = Σ_ii = d_i^2
-    diagΣ  = diag(Σ)
+    diagΣ = diag(Σ)
     d = sqrt.(diagΣ)
     Dinv2 = Diagonal(1 ./ (diagΣ))
     k = p.k
@@ -241,17 +225,17 @@ function rmala_step(p::AbstractHierarchicalRMALAProblem,
         d = length(fr)
         -0.5 * d * log(2π * τ) - dot(δ, δ) / (2τ)
     end
-    logq_spd(to, fr, dr, τ) = begin
+    function logq_spd(to, fr, dr, τ)
         V1 = logmap_spd(fr, to)
-        S1 = V1 .- τ .* dr
-        d = size(fr, 1) * (size(fr, 1) + 1) ÷ 2
-        F = cholesky(Symmetric(fr))
-        Y = F.U \ (F.L \ S1)
-        quad = tr(Y * Y)
-        -0.5 * d * log(2π * τ) +
-        0.5 * (size(fr, 1) + 1) * sum(log, diag(F.U)) -
-        quad / (2τ)
-    end
+        S1 = V1 .- τ*dr
+        d  = n(n+1)/2
+        F  = cholesky(Symmetric(fr))
+        Y  = F.U \ (F.L \ S1)
+        quad = tr(Y*Y)
+        -0.5*d*log(2π*τ)
+          + 0.5*(n+1)*sum(log,diag(F.U))    # ← this line
+          - quad/(2τ)
+      end
 
     logq_fwd = sum(logq_euc.(μs_cand, μs, drift_μ, τμ)) +
                logq_spd(Σ_cand, Σ, drift_Σ, τΣ)
