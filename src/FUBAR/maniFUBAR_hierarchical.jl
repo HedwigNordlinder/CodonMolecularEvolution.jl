@@ -115,7 +115,7 @@ end
 #  Extended χ–LKJ prior on Σ = D R D  with d_i∼χ(k),  R∼LKJ(η)
 #  p(Σ) ∝ ∏ d_i^(k−n−1) e^(−d_i^2/2) ⋅ (det R)^(η−1)
 # ----------------------------------------------------------------------------
-function logprior_Σ(p::HierarchicalRMLALKJ, Σ::Matrix{Float64})
+function logprior_Σ(p::HierarchicalRMLALKJ,Σ::Matrix{Float64})
     n = size(Σ,1)
     # extract d_i = sqrt(Σ_ii)
     d = sqrt.(diag(Σ))
@@ -135,7 +135,6 @@ function logprior_Σ(p::HierarchicalRMLALKJ, Σ::Matrix{Float64})
 end
 
 function gradE_logp_Σ(p::HierarchicalRMLALKJ,
-                      μs::Vector{Vector{Float64}},
                       Σ::Matrix{Float64})
     n      = size(Σ,1)
     # d_i = sqrt(Σ_ii), and diagΣ = Σ_ii = d_i^2
