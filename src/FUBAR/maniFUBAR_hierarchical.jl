@@ -94,7 +94,9 @@ function logprior_Σ(p::HierarchicalRMALARiemGauss, Σ::Matrix{Float64})
     return -0.5/(p.σ^2) * tr(T*T)
 end
 
-function gradE_logp_Σ(p::HierarchicalRMALARiemGauss, Σ)
+function gradE_logp_Σ(p::HierarchicalRMALARiemGauss,
+                      μs::Vector{Vector{Float64}},
+                      Σ::Matrix{Float64})
     σ2 = p.σ^2
     # compute T = log_{M0}(Σ)
     T = logmap_spd(p.M0, Σ)
@@ -135,6 +137,7 @@ function logprior_Σ(p::HierarchicalRMLALKJ,Σ::Matrix{Float64})
 end
 
 function gradE_logp_Σ(p::HierarchicalRMLALKJ,
+                      μs::Vector{Vector{Float64}},
                       Σ::Matrix{Float64})
     n      = size(Σ,1)
     # d_i = sqrt(Σ_ii), and diagΣ = Σ_ii = d_i^2
