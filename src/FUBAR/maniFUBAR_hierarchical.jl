@@ -17,7 +17,12 @@ logmap_spd(X, Y) = begin
     Xh * log(invXh * Y * invXh) * Xh
 end
 
-geo_drift(X) = -(size(X, 1) + 1) / 2 * X
+# Replaced geo drift 
+geo_drift(X) = begin
+    n = size(X,1)              # matrix is n×n
+    d = n*(n+1) ÷ 2            # manifold dimension
+    -((d + 1)/2) * X
+  end
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  Problem types
