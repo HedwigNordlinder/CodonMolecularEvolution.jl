@@ -97,7 +97,7 @@ function gradE_logp_Σ(
     μs::Vector{Vector{Float64}},
     Σ::Matrix{Float64}
 )
-    # original “Gaussian” part
+    # 1) the “Gaussian” part you already have
     σ2 = p.σ^2
     M0h = sqrt(p.M0)
     iM0h = inv(M0h)
@@ -106,29 +106,44 @@ function gradE_logp_Σ(
     Gx = inv(X) * T
     G_gauss = -(1 / σ2) * iM0h * Gx * iM0h
 
-    return G_gauss 
+    # 2) the μ–Σ coupling term (missing!)
+    n = size(Σ, 1)
+    S = zeros(n, n)
+    for μ in μs
+        S .+= μ * μ'
+    end
+    G_mu = 0.5 * inv(Σ) * S * inv(Σ)
+
+    return G_gauss .+ G_mu
 end
 # ----------------------------------------------------------------------------
 #  Extended χ–LKJ prior on Σ = D R D  with d_i∼χ(k),  R∼LKJ(η)
 #  p(Σ) ∝ ∏ d_i^(k−n−1) e^(−d_i^2/2) ⋅ (det R)^(η−1)
 # ----------------------------------------------------------------------------
-function logprior_Σ(p::HierarchicalRMLALKJ, Σ::Matrix{Float64})
+function gradE_logp_Σ(p::HierarchicalRMLALKJ,
+    μs::Vector{Vector{Float64}},
+    Σ::Matrix{Float64})
     n = size(Σ, 1)
-    # extract d_i = sqrt(Σ_ii)
-    d = sqrt.(diag(Σ))
-    D = Diagonal(d)
-    # correlation matrix
-    R = inv(D) * Σ * inv(D)
-    # dimensionality of each μ grid
+    # precompute
+    Σinv = inv(Σ)
+    diagΣ = diag(Σ)
     k = p.k
 
-    # ∑[(k−n−1)·log d_i  − ½ d_i^2]
-    term1 = sum((k - n - 1) .* log.(d) .- 0.5 .* (d .^ 2))
+    # 1) the χ–scale + LKJ parts
+    #    ∂/∂Σ_ii of ∑[(k−n−1) log d_i − ½ d_i^2]
+    diag_grad = ((k - n - 1) ./ (2 .* diagΣ)) .- 0.5
+    G1 = Diagonal(diag_grad)
+    #    ∂/∂Σ of (η−1)·log det(R) = (η−1)(Σ⁻¹ − D⁻²)
+    G2 = (p.η - 1) .* (Σinv .- Diagonal(1 ./ (diagΣ)))
 
-    # Julia's logdet(R) returns a single Float64 for SPD matrices
-    term2 = (p.η - 1) * logdet(R)
+    # 2) the μ–Σ coupling term: ∑_i ∇_Σ [−½ μᵢᵀ Σ⁻¹ μᵢ] = +½ Σ⁻¹ S Σ⁻¹
+    S = zeros(n, n)
+    for μ in μs
+        S .+= μ * μ'
+    end
+    Gμ = 0.5 * Σinv * S * Σinv
 
-    return term1 + term2
+    return G1 .+ G2 .+ Gμ
 end
 
 function gradE_logp_Σ(p::HierarchicalRMLALKJ,
