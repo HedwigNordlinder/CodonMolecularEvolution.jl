@@ -225,17 +225,18 @@ function rmala_step(p::AbstractHierarchicalRMALAProblem,
         d = length(fr)
         -0.5 * d * log(2π * τ) - dot(δ, δ) / (2τ)
     end
-    function logq_spd(to, fr, dr, τ)
+    logq_spd(to, fr, dr, τ) = begin
         V1 = logmap_spd(fr, to)
-        S1 = V1 .- τ*dr
-        d  = n(n+1)/2
+        S1 = V1 .- τ .* dr
+        n  = size(fr, 1)
+        d  = n * (n + 1) ÷ 2
         F  = cholesky(Symmetric(fr))
         Y  = F.U \ (F.L \ S1)
-        quad = tr(Y*Y)
-        -0.5*d*log(2π*τ)
-          + 0.5*(n+1)*sum(log,diag(F.U))    # ← this line
-          - quad/(2τ)
-      end
+        quad = tr(Y * Y)
+        -0.5 * d * log(2π * τ) +
+        (n + 1) * sum(log, diag(F.U)) -
+        quad / (2τ)
+    end
 
     logq_fwd = sum(logq_euc.(μs_cand, μs, drift_μ, τμ)) +
                logq_spd(Σ_cand, Σ, drift_Σ, τΣ)
