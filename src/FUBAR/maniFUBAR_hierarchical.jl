@@ -88,19 +88,31 @@ function gradE_logp_Σ(p::HierarchicalRMALAWishart,
     return ((ν0 - n - 1) / 2) * Σinv .- 0.5 * Σ0inv .+ 0.5 * Σinv * S * Σinv
 end
 
-function logprior_Σ(p::HierarchicalRMALARiemGauss, Σ::Matrix{Float64})
-    # squared Riemannian distance = ‖logm(M0^(-1/2) Σ M0^(-1/2))‖_F^2
+function logprior_Σ(p::HierarchicalRMALARiemGauss, Σ)
+    n = size(Σ, 1)
     T = logmap_spd(p.M0, Σ)
-    return -0.5 / (p.σ^2) * tr(T * T)
+    return -0.5 / p.σ^2 * tr(T * T)
+    -(n + 1) / 2 * logdet(Σ)
 end
-function gradE_logp_Σ(p::HierarchicalRMALARiemGauss, μs::Vector{Vector{Float64}}, Σ::Matrix{Float64})
-    σ2   = p.σ^2
-    M0h  = sqrt(p.M0)           # M0^(1/2)
-    iM0h = inv(M0h)             # M0^(-1/2)
-    X    = iM0h * Σ * iM0h
-    T    = log(X)               # = M0^(-1/2) * logmap_spd(M0,Σ) * M0^(-1/2)
-    Gx   = inv(X) * T           # ∇_X [–½/σ²||log(X)||²]
-    return   -(1/σ2) * iM0h * Gx * iM0h
+function gradE_logp_Σ(
+    p::HierarchicalRMALARiemGauss,
+    μs::Vector{Vector{Float64}},
+    Σ::Matrix{Float64}
+)
+    # original “Gaussian” part
+    σ2 = p.σ^2
+    M0h = sqrt(p.M0)
+    iM0h = inv(M0h)
+    X = iM0h * Σ * iM0h
+    T = log(X)
+    Gx = inv(X) * T
+    G_gauss = -(1 / σ2) * iM0h * Gx * iM0h
+
+    # the new log‐det term
+    n = size(Σ, 1)
+    G_logvol = -((n + 1) / 2) * inv(Σ)
+
+    return G_gauss .+ G_logvol
 end
 # ----------------------------------------------------------------------------
 #  Extended χ–LKJ prior on Σ = D R D  with d_i∼χ(k),  R∼LKJ(η)
@@ -228,10 +240,10 @@ function rmala_step(p::AbstractHierarchicalRMALAProblem,
     logq_spd(to, fr, dr, τ) = begin
         V1 = logmap_spd(fr, to)
         S1 = V1 .- τ .* dr
-        n  = size(fr, 1)
-        d  = n * (n + 1) ÷ 2
-        F  = cholesky(Symmetric(fr))
-        Y  = F.U \ (F.L \ S1)
+        n = size(fr, 1)
+        d = n * (n + 1) ÷ 2
+        F = cholesky(Symmetric(fr))
+        Y = F.U \ (F.L \ S1)
         quad = tr(Y * Y)
         -0.5 * d * log(2π * τ) +
         (n + 1) * sum(log, diag(F.U)) -
