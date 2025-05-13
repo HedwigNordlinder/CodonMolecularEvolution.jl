@@ -13,10 +13,11 @@ end
 # — Normal prior on each μᵢ ~ 𝒩(0, Σ)
 struct NormalPrior <: Prior end
 
-function logprior(::NormalPrior, μs::Vector{Vector{T}}, Σ::AbstractMatrix{T}) where T
-    lp = 1/2 * logdet(Σ)
+function logprior(::NormalPrior, μs::Vector{<:AbstractVector}, Σ::AbstractMatrix)
+    N = length(μs)
+    lp = - (N/2) * logdet(Σ)
     for μ in μs
-        lp -= 1/2 * dot(μ, Σ \ μ)
+      lp -= (1/2)* dot(μ, Σ\μ)
     end
     return lp
 end
@@ -25,15 +26,14 @@ function grad_logprior(::NormalPrior, μs::Vector{Vector{T}}, Σ::AbstractMatrix
     return [ -(Σ \ μ) for μ in μs ]
 end
 
-function euclid_grad_logprior(::NormalPrior, μs::Vector{Vector{T}}, Σ::AbstractMatrix{T}) where T
+function euclid_grad_logprior(::NormalPrior, μs, Σ)
     N = length(μs)
     S = zeros(eltype(Σ), size(Σ))
     for μ in μs
-        S .+= μ * μ'
+      S .+= μ*μ'
     end
-    t1 = -N/2 * inv(Σ)
-    t2 = +1/2 * inv(Σ) * S * inv(Σ)
-    return t1 .+ t2
+    # true gradient is:  -N/2 Σ^{-1} + 1/2 Σ^{-1} S Σ^{-1}
+    return - (N/2)*inv(Σ) .+ (1/2)*inv(Σ)*S*inv(Σ)
 end
 
 # — Wishart prior Σ ~ W(df, V0)
