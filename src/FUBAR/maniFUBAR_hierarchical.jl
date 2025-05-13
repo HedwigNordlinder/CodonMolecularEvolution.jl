@@ -64,6 +64,67 @@ function loglikelihood(p::AbstractHierarchicalRMALAProblem,
     end
     return ll
 end
+struct HierarchicalRMALARiemLaplace <: AbstractHierarchicalRMALAProblem
+    grids::Vector{FUBARgrid}
+    b::Float64             # Laplace “scale”
+    M0::Matrix{Float64}    # Center on SPD manifold
+end
+
+function HierarchicalRMALARiemLaplace(grids::Vector{FUBARgrid}, b::Float64)
+    n = length(grids[1].grid)
+    HierarchicalRMALARiemLaplace(grids, b, Matrix{Float64}(I, n, n))
+end
+## 
+function logprior_Σ(p::HierarchicalRMALARiemLaplace, Σ)
+    # 1) geodesic distance
+    T    = logmap_spd(p.M0, Σ)
+    dist = sqrt(tr(T*T))
+    lp   = -dist / p.b
+
+    # 2) normalization from μ|Σ priors
+    Ktot = sum(size(g.cond_lik_matrix,1) for g in p.grids)
+    lp  += -0.5 * Ktot * logdet(Σ)
+
+    return lp
+end
+
+# Euclidean gradient of −log p
+function gradE_logp_Σ(
+    p::HierarchicalRMALARiemLaplace,
+    μs::Vector{Vector{Float64}},
+    Σ::Matrix{Float64}
+)
+    # --- 1) Laplace‐prior piece ---
+    # d = ||T||,  ∇_T d = T/d,  then chain through logmap
+    M0h   = sqrt(p.M0)
+    iM0h  = inv(M0h)
+    X     = iM0h * Σ * iM0h
+    T     = log(X)
+    d     = sqrt(tr(T*T))
+
+    if d == 0.0
+        G_lap = zeros(size(Σ))
+    else
+        A      = T ./ (p.b * d)                 # ∇_T (d/b)
+        Gx_lap = inv(X) * A                     # Frechet‐adjoint: inv(X)*A
+        G_lap  = iM0h * Gx_lap * iM0h
+    end
+
+    # --- 2) μ–Σ coupling term (same as Gaussian case) ---
+    n = size(Σ,1)
+    S = zeros(n,n)
+    for μ in μs
+        S .+= μ * μ'
+    end
+    G_mu = 0.5 * inv(Σ) * S * inv(Σ)
+
+    # --- 3) normalization gradient from μ|Σ: −½K Σ⁻¹ ---
+    Ktot  = sum(length(μ) for μ in μs)
+    G_norm = -(Ktot/2) * inv(Σ)
+
+    return G_lap .+ G_mu .+ G_norm
+end
+##
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  Wishart prior on Σ
