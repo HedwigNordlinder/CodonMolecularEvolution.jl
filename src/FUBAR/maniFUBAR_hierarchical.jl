@@ -89,32 +89,43 @@ function gradE_logp_Σ(p::HierarchicalRMALAWishart,
 end
 
 function logprior_Σ(p::HierarchicalRMALARiemGauss, Σ)
+    # Riemannian‐Gaussian part
     T = logmap_spd(p.M0, Σ)
-    return -0.5 / p.σ^2 * tr(T * T)
+    gauss = -0.5 / p.σ^2 * tr(T * T)
+
+    # normalization from μ|Σ priors:  −½ ∑_i K_i log det(Σ)
+    Ktotal = sum(size(g.cond_lik_matrix,1) for g in p.grids)
+    norm  = -0.5 * Ktotal * logdet(Σ)
+
+    return gauss + norm
 end
+
 function gradE_logp_Σ(
     p::HierarchicalRMALARiemGauss,
     μs::Vector{Vector{Float64}},
     Σ::Matrix{Float64}
 )
-    # 1) the “Gaussian” part you already have
-    σ2 = p.σ^2
-    M0h = sqrt(p.M0)
+    # 1) the “Gaussian” Riemann‐prior piece
+    σ2   = p.σ^2
+    M0h  = sqrt(p.M0)
     iM0h = inv(M0h)
-    X = iM0h * Σ * iM0h
-    T = log(X)
-    Gx = inv(X) * T
-    G_gauss = -(1 / σ2) * iM0h * Gx * iM0h
+    X    = iM0h * Σ * iM0h
+    T    = log(X)
+    Gx   = inv(X) * T               # Frechet-adjoint term
+    G_gauss = -(1/σ2) * (iM0h * Gx * iM0h)
 
-    # 2) the μ–Σ coupling term (missing!)
-    n = size(Σ, 1)
-    S = zeros(n, n)
+    # 2) the μ–Σ coupling term
+    S = zeros(size(Σ))
     for μ in μs
         S .+= μ * μ'
     end
     G_mu = 0.5 * inv(Σ) * S * inv(Σ)
 
-    return G_gauss .+ G_mu
+    # 3) the missing normalization gradient: −½K Σ⁻¹
+    Ktotal = sum(length(μ) for μ in μs)
+    G_norm = -(Ktotal/2) * inv(Σ)
+
+    return G_gauss .+ G_mu .+ G_norm
 end
 # ----------------------------------------------------------------------------
 #  Extended χ–LKJ prior on Σ = D R D  with d_i∼χ(k),  R∼LKJ(η)
