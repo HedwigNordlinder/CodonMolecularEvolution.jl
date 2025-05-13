@@ -76,7 +76,7 @@ end
 # ----------------------------------------------------------------------------
 # — likelihood
 # ----------------------------------------------------------------------------
-function loglikelihood(p::HierarchicalRMALAProblem, μs::Vector{Vector})
+function loglikelihood(p::HierarchicalRMALAProblem, μs)
     ll = 0.0
     for (i, μ) in enumerate(μs)
         L = p.grids[i].cond_lik_matrix
