@@ -80,7 +80,7 @@ function loglikelihood(p::HierarchicalRMALAProblem, μs)
         L = p.grids[i].cond_lik_matrix
         log_soft = μ .- logsumexp(μ)
         soft     = exp.(log_soft) / sum(exp.(log_soft))
-        ll      += sum(log.(soft) .* L)
+        ll      += sum(log.(soft .* L))
     end
     return ll
 end
@@ -105,15 +105,25 @@ function log_posterior(p::HierarchicalRMALAProblem, μs, Σ)
 end
 
 function grad_log_post_mu(p::HierarchicalRMALAProblem, μs, Σ)
+    # Compute gradient of ll = sum_j log(sum_i L[i,j] * softmax(μ)[i])
     gs = [ zeros(length(μ)) for μ in μs ]
     for (i, μ) in enumerate(μs)
-        L = p.grids[i].cond_lik_matrix
+        L = p.grids[i].cond_lik_matrix   # K×N
+        # softmax probabilities
         v = exp.(μ .- logsumexp(μ))
-        M = v' * L; w = 1.0 ./ M; gv = L * w; α = dot(gv, v)
-        gs[i] = gv .* v .- v .* α
+        v ./= sum(v)
+        # mixture likelihood per site: M_j = ∑_i L[i,j] * v[i]
+        M = v * L                     # 1×N row vector
+        # gradient wrt v: ∂/∂v sum_j log(M_j) = L * (1 ./ M)'
+        w = vec(1.0 ./ M)             # N-vector
+        grad_v = L * w                # K-vector
+        # propagate through softmax: ∇_μ = J_softmax^T * grad_v
+        α = dot(v, grad_v)
+        gs[i] = v .* (grad_v .- α)
     end
+    # add μ-prior gradient
     gμ_prior = grad_logprior(p.prior_mu, μs, Σ)
-    return [ g + gp for (g, gp) in zip(gs, gμ_prior) ]
+    return [g + gp for (g, gp) in zip(gs, gμ_prior)]
 end
 
 function euclid_grad_Sigma(p::HierarchicalRMALAProblem, μs, Σ)
