@@ -1,11 +1,16 @@
-using LinearAlgebra
-using Distributions
-using StatsFuns: logsumexp, lgamma
+
 
 # ----------------------------------------------------------------------------
-# — abstract “Prior” interface + dispatchers
+# — abstract "Prior" interface + dispatchers
 # ----------------------------------------------------------------------------
 abstract type Prior end
+
+# — Forward declaration of the problem type
+struct HierarchicalRMALAProblem{Pμ<:Prior, PΣ<:Prior}
+    grids::Vector{FUBARgrid}
+    prior_mu::Pμ
+    prior_sigma::PΣ
+end
 
 # — Normal prior on each μᵢ ~ 𝒩(0, Σ)
 struct NormalPrior <: Prior end
