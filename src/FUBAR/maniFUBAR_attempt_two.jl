@@ -113,7 +113,7 @@ function grad_log_post_mu(p::HierarchicalRMALAProblem, μs, Σ)
         v = exp.(μ .- logsumexp(μ))
         v ./= sum(v)
         # mixture likelihood per site: M_j = ∑_i L[i,j] * v[i]
-        M = v * L                     # 1×N row vector
+        M = v' * L                     # 1×N row vector
         # gradient wrt v: ∂/∂v sum_j log(M_j) = L * (1 ./ M)'
         w = vec(1.0 ./ M)             # N-vector
         grad_v = L * w                # K-vector
