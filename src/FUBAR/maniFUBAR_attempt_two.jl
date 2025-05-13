@@ -77,10 +77,12 @@ end
 function loglikelihood(p::HierarchicalRMALAProblem, μs)
     ll = 0.0
     for (i, μ) in enumerate(μs)
-        L = p.grids[i].cond_lik_matrix
+        L = p.grids[i].cond_lik_matrix      # K×N
+        # log-softmax → probabilities v sum to 1
         log_soft = μ .- logsumexp(μ)
-        soft     = exp.(log_soft) / sum(exp.(log_soft))
-        ll      += sum(log.(soft .* L))
+        v        = exp.(log_soft)
+        M        = v' * L                  # 1×N row vector
+        ll      += sum(log.(M))            # sum_j log M_j
     end
     return ll
 end
