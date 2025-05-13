@@ -1,5 +1,3 @@
-
-
 # ----------------------------------------------------------------------------
 # — abstract "Prior" interface + dispatchers
 # ----------------------------------------------------------------------------
@@ -92,11 +90,12 @@ end
 # ----------------------------------------------------------------------------
 # — full problem type
 # ----------------------------------------------------------------------------
-struct HierarchicalRMALAProblem{Pμ<:Prior, PΣ<:Prior}
-    grids::Vector{FUBARgrid}
-    prior_mu::Pμ
-    prior_sigma::PΣ
-end
+# Delete this duplicate struct definition
+# struct HierarchicalRMALAProblem{Pμ<:Prior, PΣ<:Prior}
+#     grids::Vector{FUBARgrid}
+#     prior_mu::Pμ
+#     prior_sigma::PΣ
+# end
 
 # ----------------------------------------------------------------------------
 # — posterior + grads
