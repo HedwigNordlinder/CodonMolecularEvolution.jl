@@ -45,6 +45,7 @@ export
     HierarchicalRMALAWishart,
     HierarchicalRMLALKJ,
     HierarchicalRMALARiemGauss,
+    HierarchicalRMALARiemLaplace,
     SupressionType,
     run_rmala
 end
