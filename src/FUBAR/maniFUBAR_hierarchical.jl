@@ -105,7 +105,7 @@ function gradE_logp_Σ(
     μs::Vector{Vector{Float64}},
     Σ::Matrix{Float64}
 )
-    # 1) the “Gaussian” Riemann‐prior piece
+    # 1) the "Gaussian" Riemann‐prior piece
     σ2   = p.σ^2
     M0h  = sqrt(p.M0)
     iM0h = inv(M0h)
@@ -316,14 +316,20 @@ function run_rmala(p::AbstractHierarchicalRMALAProblem,
 
     μs, Σ = deepcopy(μ0s), copy(Σ0)
     accepted = total = 0
+    overall_accepted = overall_total = 0
 
     # burn‐in
     for k in 1:burnin
         μs, Σ, ok = rmala_step(p, μs, Σ; τμ=τμ, τΣ=τΣ)
         total += 1
         accepted += ok
+        overall_accepted += ok
+        overall_total += 1
+        
         if progress && k % 100 == 0
-            println("Burn‐in $k/$burnin, acc=$(accepted/total)")
+            println("Burn‐in $k/$burnin, acc=$(accepted/100) ($(accepted/total) overall)")
+            accepted = 0
+            total = 0
         end
     end
 
@@ -332,19 +338,24 @@ function run_rmala(p::AbstractHierarchicalRMALAProblem,
     for k in 1:nsamples
         μs, Σ, ok = rmala_step(p, μs, Σ; τμ=τμ, τΣ=τΣ)
         total += 1
+        overall_total += 1
         if ok
             accepted += 1
+            overall_accepted += 1
             for i in 1:G
                 push!(μ_chain[i], copy(μs[i]))
             end
             push!(Σ_chain, copy(Σ))
             push!(logp_chain, logposterior(p, μs, Σ))
         end
+        
         if progress && k % 100 == 0
-            println("Sampling $k/$nsamples, acc=$(accepted/total)")
+            println("Sampling $k/$nsamples, acc=$(accepted/100) ($(overall_accepted/overall_total) overall)")
+            accepted = 0
+            total = 0
         end
     end
 
-    stats = (accept_rate=accepted / total, τμ=τμ, τΣ=τΣ, burnin=burnin)
+    stats = (accept_rate=overall_accepted / overall_total, τμ=τμ, τΣ=τΣ, burnin=burnin)
     return μ_chain, Σ_chain, logp_chain, stats
 end
