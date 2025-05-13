@@ -190,7 +190,7 @@ end
 function rmala_sampler(p::HierarchicalRMALAProblem,
                        μs0::Vector{Vector{Float64}},
                        Σ0::Matrix{Float64};
-                       τ::Float64, num_samples::Int, burnin::Int=0)
+                       τ::Float64=1e-4, num_samples::Int=1000, burnin::Int=0)
     μs, Σ = deepcopy(μs0), deepcopy(Σ0)
     mus_samples   = Vector{Vector{Vector{Float64}}}()
     sigma_samples = Vector{Matrix{Float64}}()
