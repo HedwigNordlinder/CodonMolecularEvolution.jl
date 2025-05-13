@@ -194,15 +194,36 @@ function rmala_sampler(p::HierarchicalRMALAProblem,
     μs, Σ = deepcopy(μs0), deepcopy(Σ0)
     mus_samples   = Vector{Vector{Vector{Float64}}}()
     sigma_samples = Vector{Matrix{Float64}}()
+    logpost_samples = Vector{Float64}()
     acc = 0
-    for i in 1:(num_samples+burnin)
-        μs, Σ, ok = rmala_step(p, μs, Σ, τ)
-        acc += ok
-        if i > burnin
-            push!(mus_samples, deepcopy(μs))
-            push!(sigma_samples, deepcopy(Σ))
+    total_iter = 0
+    
+    # Initial log posterior
+    current_logpost = log_posterior(p, μs, Σ)
+    
+    while length(mus_samples) < num_samples
+        total_iter += 1
+        μs_new, Σ_new, accepted = rmala_step(p, μs, Σ, τ)
+        
+        if accepted
+            acc += 1
+            μs, Σ = μs_new, Σ_new
+            current_logpost = log_posterior(p, μs, Σ)
+            
+            # Only store samples after burnin
+            if total_iter > burnin
+                push!(mus_samples, deepcopy(μs))
+                push!(sigma_samples, deepcopy(Σ))
+                push!(logpost_samples, current_logpost)
+            end
+        end
+        
+        # Print debug info every 100 iterations
+        if total_iter % 100 == 0
+            @info "Iter $(total_iter): Acceptance rate = $(acc/total_iter), Collected $(length(mus_samples))/$(num_samples) samples"
         end
     end
-    @info "Acceptance rate = $(acc/(num_samples+burnin))"
-    return mus_samples, sigma_samples
+    
+    @info "Final acceptance rate = $(acc/total_iter), Total iterations = $(total_iter)"
+    return mus_samples, sigma_samples, logpost_samples
 end
