@@ -45,7 +45,7 @@ end
 In‐place MALA update for μ given its grid and current Σ.
 """
 function mala_update!(μ::Vector{Float64},
-                      grid::FUBARGrid,
+                      grid::FUBARgrid,
                       Σ::Matrix{Float64},
                       τ::Float64)
     L      = grid.cond_lik_matrix
