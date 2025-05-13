@@ -5,7 +5,7 @@ abstract type Prior end
 
 # — Forward declaration of the problem type
 struct HierarchicalRMALAProblem{Pμ<:Prior, PΣ<:Prior}
-    grids::Vector{FUBARgrid}
+    grids
     prior_mu::Pμ
     prior_sigma::PΣ
 end
