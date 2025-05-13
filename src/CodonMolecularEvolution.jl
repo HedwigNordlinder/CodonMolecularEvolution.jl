@@ -17,8 +17,8 @@ include("simulations/alphabeta/alphabeta.jl")
 include("simulations/ou_hb.jl")
 include("FUBAR/gaussianFUBAR.jl")
 include("FUBAR/grid_utilities.jl")
-include("FUBAR/maniFUBAR_hierarchical.jl")
 include("FUBAR/mala_within_gibbs.jl")
+include("FUBAR/maniFUBAR_attempt_two.jl")
 export 
     difFUBARBaseline,
     difFUBARParallel,
@@ -43,12 +43,16 @@ export
     FUBARgrid,
     RMALAProblem,
     WishartProblem,
-    HierarchicalRMALAWishart,
-    HierarchicalRMLALKJ,
-    HierarchicalRMALARiemGauss,
-    HierarchicalRMALARiemLaplace,
+    
     SupressionType,
     run_rmala,
     run_gibbs,
-    MALAWithinGibbs
+    MALAWithinGibbs,
+    
+    # maniFUBAR exports
+    HierarchicalRMALAProblem,
+    NormalPrior,
+    WishartPrior,
+    RiemannianGaussianPrior,
+    rmala_sampler
 end
