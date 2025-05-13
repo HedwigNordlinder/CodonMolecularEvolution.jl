@@ -1,5 +1,5 @@
 struct MALAWithinGibbs
-    grids :: Vector{FUBARGrid}
+    grids :: Vector{FUBARgrid}
     ν0    :: Float64
     S0    :: Matrix{Float64}
     τ     :: Float64

@@ -47,5 +47,7 @@ export
     HierarchicalRMALARiemGauss,
     HierarchicalRMALARiemLaplace,
     SupressionType,
-    run_rmala
+    run_rmala,
+    run_gibbs,
+    MALAWithinGibbs
 end
