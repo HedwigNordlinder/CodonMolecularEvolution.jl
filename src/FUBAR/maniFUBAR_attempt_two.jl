@@ -14,8 +14,7 @@ end
 struct NormalPrior <: Prior end
 
 function logprior(::NormalPrior, μs::Vector{Vector{T}}, Σ::AbstractMatrix{T}) where T
-    N, K = length(μs), length(μs[1])
-    lp = -N*(K/2*log(2π) + 1/2*logdet(Σ))
+    lp = 1/2*logdet(Σ)
     for μ in μs
         lp -= 1/2 * dot(μ, Σ \ μ)
     end
@@ -45,8 +44,7 @@ end
 
 function logprior(p::WishartPrior, Σ::AbstractMatrix{T}) where T
     ν, V0 = p.df, p.V0; K = size(Σ,1)
-    mvlg = (K*(K-1)/4)*log(pi) + sum(lgamma(ν/2 .+ (1 .- collect(1:K))./2))
-    return ((ν - K - 1)/2)*logdet(Σ) - 1/2*tr(inv(V0)*Σ) - (ν*K/2)*log(2) - mvlg - (ν/2)*logdet(V0)
+    return ((ν - K - 1)/2)*logdet(Σ) - 1/2*tr(inv(V0)*Σ) 
 end
 
 function grad_logprior(p::WishartPrior, Σ::AbstractMatrix{T}) where T
