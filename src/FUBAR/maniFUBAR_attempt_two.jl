@@ -97,13 +97,15 @@ function log_posterior(p::HierarchicalRMALAProblem, μs, Σ)
 end
 
 function grad_log_post_mu(p::HierarchicalRMALAProblem, μs, Σ)
-    gs = [zeros(length(μ)) for μ in μs]
+    gs = [ zeros(length(μ)) for μ in μs ]
     for (i, μ) in enumerate(μs)
         L = p.grids[i].cond_lik_matrix
-        log_soft = μ .- logsumexp(μ)
-        v = exp.(log_soft)
+        v = exp.(μ .- logsumexp(μ)); v ./= sum(v)
         M = v' * L
-        gs[i] = L * (1.0 ./ vec(M)) .- sum(L; dims=2)  # More numerically stable
+        w = vec(1.0 ./ M)
+        grad_v = L * w
+        α = dot(v, grad_v)
+        gs[i] = v .* (grad_v .- α)
     end
     gμ_prior = grad_logprior(p.prior_mu, μs, Σ)
     return [g + gp for (g, gp) in zip(gs, gμ_prior)]
@@ -178,7 +180,7 @@ function rmala_step(p::HierarchicalRMALAProblem, μs, Σ, τ_mu::Float64, τ_sig
     # Reverse proposal densities
     gμ_new = grad_log_post_mu(p, μs_new, Σ_new)
     gΣ_new = riemannian_grad_Sigma(p, μs_new, Σ_new)
-    lqr   = sum(log_q_mu(μp, μ, gp, τ_mu) for (μ,μp,gp) in zip(μs, μs_new, gμ_new)) +
+    lqr   = sum(log_q_mu(μp, μ, gp, τ_mu) for (μp,μ,gp) in zip(μs_new, μs, gμ_new)) +
              log_q_Sigma(Σ_new, Σ, gΣ_new, τ_sigma)
 
     # Accept/reject
