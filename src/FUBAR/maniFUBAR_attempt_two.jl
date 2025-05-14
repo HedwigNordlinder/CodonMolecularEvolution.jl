@@ -137,7 +137,7 @@ function rand_tangent_Sigma(Σ, τ)
     K = size(Σ,1)
     W = randn(K,K)
     Z = (W + W')/2                          # now diag var=1, off-diag var=½+½=1
-    S = sqrtm(Σ)
+    S = sqrt(Σ)
     return √τ * (S * Z * S)
 end
 log_q_mu(μ₀, μ₁, g₀, τ) = begin Δ = μ₁ .- μ₀ .- (τ/2)*g₀; -dot(Δ,Δ)/(2τ) end
