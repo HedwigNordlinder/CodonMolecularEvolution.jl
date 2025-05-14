@@ -97,15 +97,13 @@ function log_posterior(p::HierarchicalRMALAProblem, μs, Σ)
 end
 
 function grad_log_post_mu(p::HierarchicalRMALAProblem, μs, Σ)
-    gs = [ zeros(length(μ)) for μ in μs ]
+    gs = [zeros(length(μ)) for μ in μs]
     for (i, μ) in enumerate(μs)
         L = p.grids[i].cond_lik_matrix
-        v = exp.(μ .- logsumexp(μ)); v ./= sum(v)
+        log_soft = μ .- logsumexp(μ)
+        v = exp.(log_soft)
         M = v' * L
-        w = vec(1.0 ./ M)
-        grad_v = L * w
-        α = dot(v, grad_v)
-        gs[i] = v .* (grad_v .- α)
+        gs[i] = L * (1.0 ./ vec(M)) .- sum(L; dims=2)  # More numerically stable
     end
     gμ_prior = grad_logprior(p.prior_mu, μs, Σ)
     return [g + gp for (g, gp) in zip(gs, gμ_prior)]
