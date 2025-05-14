@@ -135,16 +135,25 @@ metric_inner_Sigma(Σ, U, V) = tr(inv(Σ)*U*inv(Σ)*V)
 
 function rand_tangent_Sigma(Σ, τ)
     K = size(Σ,1)
-    W = randn(K,K); symW = (W + W')/√2; S = sqrt(Σ)
-    return √τ * (S * symW * S)
+    W = randn(K,K)
+    Z = (W + W')/2                          # now diag var=1, off-diag var=½+½=1
+    S = sqrtm(Σ)
+    return √τ * (S * Z * S)
 end
-
 log_q_mu(μ₀, μ₁, g₀, τ) = begin Δ = μ₁ .- μ₀ .- (τ/2)*g₀; -dot(Δ,Δ)/(2τ) end
-log_q_Sigma(Σ₀, Σ₁, g₀, τ) = begin
-    V = log_map_Sigma(Σ₀, Σ₁); Δ = V .- (τ/2)*g₀
-    -metric_inner_Sigma(Σ₀, Δ, Δ)/(2τ)
-end
+function log_q_Sigma(Σ0, Σ1, g0, τ)
+    # quadratic term
+    V    = log_map_Sigma(Σ0, Σ1)
+    Δ    = V .- (τ/2)*g0
+    quad = - metric_inner_Sigma(Σ0, Δ, Δ) / (2τ)
 
+    # normalisation term
+    m = size(Σ0,1)
+    d = m*(m+1)÷2
+    log_norm = -(d/2)*log(2π*τ) - ((m+1)/2)*logdet(Σ0)
+
+    return log_norm + quad
+end
 # ----------------------------------------------------------------------------
 # — RMALA iteration with separate taus
 # ----------------------------------------------------------------------------
