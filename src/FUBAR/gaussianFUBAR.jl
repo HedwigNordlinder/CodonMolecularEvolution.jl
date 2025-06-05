@@ -86,13 +86,15 @@ function kernel_sampling_ess(problem::AmbientESSProblem; m=10,
     ambient_samples = AbstractMCMC.sample(ESS_model, ESS(), n_samples,
         progress=progress)
 
+    supression_samples = [sample[end-1] for sample in ambient_samples]
+
     sample_transformation_function = θ -> transform_sample(problem, θ,
         distance_matrix,
         m=m)
     post_burnin_samples = ambient_samples[(burnin+1):end]
     transformed_samples = sample_transformation_function.(post_burnin_samples)
     kernel_parameter_samples = [ambient_samples[i][(problem.gaussian_dimension+1):end] for i in eachindex(ambient_samples)]
-    return transformed_samples, kernel_parameter_samples
+    return transformed_samples,supression_samples ,kernel_parameter_samples
 end
 
 abstract type AmbientProblemModel end
@@ -341,7 +343,7 @@ function FUBAR_analysis(method::SKBDIFUBAR, grid::FUBARGrid{T};
         kernel_parameter_dimension = kernel_parameter_dimension,
         supression_type = supression_type)
 
-    samples, kernel_samples = sample_gaussian_model(model, 
+    samples,supression_samples, kernel_samples = sample_gaussian_model(model, 
         m = m, 
         n_samples = n_samples,
         burnin = burnin)
@@ -351,7 +353,7 @@ function FUBAR_analysis(method::SKBDIFUBAR, grid::FUBARGrid{T};
         m = m)
 
     analysis = FUBAR_tabulate_from_θ(method, θ, kernel_samples, grid, analysis_name, posterior_threshold = posterior_threshold, volume_scaling = volume_scaling, verbosity = verbosity, exports = exports)
-    return analysis, (θ = θ, kernel_samples = kernel_samples)
+    return analysis, (θ = θ,supression_samples=supression_samples, kernel_samples = kernel_samples)
 end
 
 function FUBAR_tabulate_from_θ(method::SKBDIFUBAR, θ, kernel_samples, grid::FUBARGrid, analysis_name; posterior_threshold = 0.95, volume_scaling = 1.0, verbosity = 1, exports = true)
