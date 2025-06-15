@@ -129,7 +129,7 @@ function FUBAR_bayesian_postprocessing(θ::Vector{T}, grid::FUBARGrid{T}) where 
     
     return BayesianFUBARResults(positive_posteriors, purifying_posteriors,
         beta_posterior_mean, alpha_posterior_mean,
-        posterior_alpha, posterior_beta, θ, nothing, nothing)
+        posterior_alpha, posterior_beta, θ,nothing ,nothing, nothing)
 end
 
 
