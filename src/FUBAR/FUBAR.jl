@@ -105,7 +105,7 @@ function FUBAR_bayesian_postprocessing(θs::Vector{Vector{T}}, grid::FUBARGrid{T
     results = FUBAR_bayesian_postprocessing(θ, grid)
     return BayesianFUBARResults(results.positive_posteriors, results.purifying_posteriors, results.beta_posterior_mean, results.alpha_posterior_mean, results.posterior_alpha, results.posterior_beta, θ, θs, kernel_parameters, nothing)
 end
-function FUBAR_bayesian_postprocessing(θs::Vector{Vector{T}}, grid::FUBARGrid{T}, kernel_parameters::Vector{Vector{T}}, suppression_parameters:Vector{T}) where {T}
+function FUBAR_bayesian_postprocessing(θs::Vector{Vector{T}}, grid::FUBARGrid{T}, kernel_parameters::Vector{Vector{T}}, suppression_parameters::Vector{T}) where {T}
     θ = mean(θs)
     results = FUBAR_bayesian_postprocessing(θ, grid)
     return  BayesianFUBARResults(results.positive_posteriors, results.purifying_posteriors, results.beta_posterior_mean, results.alpha_posterior_mean, results.posterior_alpha, results.posterior_beta, θ, θs, kernel_parameters, suppression_parameters)
