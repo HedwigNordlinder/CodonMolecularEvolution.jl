@@ -95,6 +95,7 @@ struct BayesianFUBARResults{T} <: FUBARResults
     posterior_mean::Vector{T}
     theta_chain::Union{Nothing, Vector{Vector{T}}}
     kernel_parameters::Union{Nothing, Vector{Vector{T}}}
+    suppression_parameters::Union{Nothing, Vector{T}}
 end
 
 # For some Bayesian methods, we use EM instead of MCMC and in that case do not get a chain. 
@@ -102,9 +103,13 @@ end
 function FUBAR_bayesian_postprocessing(θs::Vector{Vector{T}}, grid::FUBARGrid{T}, kernel_parameters::Vector{Vector{T}}) where {T}
     θ = mean(θs)
     results = FUBAR_bayesian_postprocessing(θ, grid)
-    return BayesianFUBARResults(results.positive_posteriors, results.purifying_posteriors, results.beta_posterior_mean, results.alpha_posterior_mean, results.posterior_alpha, results.posterior_beta, θ, θs, kernel_parameters)
+    return BayesianFUBARResults(results.positive_posteriors, results.purifying_posteriors, results.beta_posterior_mean, results.alpha_posterior_mean, results.posterior_alpha, results.posterior_beta, θ, θs, kernel_parameters, nothing)
 end
-
+function FUBAR_bayesian_postprocessing(θs::Vector{Vector{T}}, grid::FUBARGrid{T}, kernel_parameters::Vector{Vector{T}}, suppression_parameters::Vector{Vector{T}}) where {T}
+    θ = mean(θs)
+    results = FUBAR_bayesian_postprocessing(θ, grid)
+    return  BayesianFUBARResults(results.positive_posteriors, results.purifying_posteriors, results.beta_posterior_mean, results.alpha_posterior_mean, results.posterior_alpha, results.posterior_beta, θ, θs, kernel_parameters, suppression_parameters)
+end
 function FUBAR_bayesian_postprocessing(θ::Vector{T}, grid::FUBARGrid{T}) where {T}
     positive_filter = grid.beta_ind_vec .> grid.alpha_ind_vec
     purifying_filter = grid.beta_ind_vec .< grid.alpha_ind_vec

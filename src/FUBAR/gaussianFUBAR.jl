@@ -353,19 +353,25 @@ function FUBAR_analysis(method::SKBDIFUBAR, grid::FUBARGrid{T};
         thinning = thinning, 
         m = m)
 
-    analysis = FUBAR_tabulate_from_θ(method, θ, kernel_samples, grid, analysis_name, posterior_threshold = posterior_threshold, volume_scaling = volume_scaling, verbosity = verbosity, exports = exports)
-    return analysis, (θ = θ,supression_samples=supression_samples[(burnin+1):thinning:end], kernel_samples = kernel_samples[(burnin+1):thinning:end])
+    thinned_supression_samples = supression_samples[(burnin+1):thinning:end]
+
+    analysis = FUBAR_tabulate_from_θ(method, θ, kernel_samples,thinned_supression_samples, grid, analysis_name, posterior_threshold = posterior_threshold, volume_scaling = volume_scaling, verbosity = verbosity, exports = exports)
+    return analysis,posterior_suppression, (θ = θ,supression_samples=thinned_supression_samples, kernel_samples = kernel_samples[(burnin+1):thinning:end])
 end
 
-function FUBAR_tabulate_from_θ(method::SKBDIFUBAR, θ, kernel_samples, grid::FUBARGrid, analysis_name; posterior_threshold = 0.95, volume_scaling = 1.0, verbosity = 1, exports = true)
-    results = FUBAR_bayesian_postprocessing(θ, grid, kernel_samples)
-    analysis = FUBAR_tabulate_results(method, results,grid,analysis_name = analysis_name, posterior_threshold = posterior_threshold, verbosity = verbosity, exports = exports)
+function FUBAR_tabulate_from_θ(method::SKBDIFUBAR, θ, kernel_samples,suppression_samples, grid::FUBARGrid, analysis_name; posterior_threshold = 0.95, volume_scaling = 1.0, verbosity = 1, exports = true)
+    results = FUBAR_bayesian_postprocessing(θ, grid, kernel_samples, suppression_samples)
+    analysis, posterior_suppression = FUBAR_tabulate_results(method, results,grid,analysis_name = analysis_name, posterior_threshold = posterior_threshold, verbosity = verbosity, exports = exports)
     FUBAR_plot_results(PlotsExtDummy(), method, results, grid, analysis_name = analysis_name, posterior_threshold = posterior_threshold, volume_scaling = volume_scaling, exports = exports)
-    return analysis
+    return analysis, posterior_suppression
 end
 
 function FUBAR_tabulate_results(method::SKBDIFUBAR,results::BayesianFUBARResults, grid::FUBARGrid; analysis_name = "skbdi_fubar_analysis", posterior_threshold = 0.95, verbosity = 1, exports = true)
-    return FUBAR_tabulate_results(DefaultBayesianFUBARMethod(), results,grid, analysis_name = analysis_name, posterior_threshold = posterior_threshold, verbosity = verbosity, exports = exports)
+    posterior_suppression_probability = 0
+    if !isnothing(results.suppression_parameters)
+        posterior_suppression_probability = sum(results.suppression_parameters .> 0) / length(results.suppression_parameters)
+    end
+    return FUBAR_tabulate_results(DefaultBayesianFUBARMethod(), results,grid, analysis_name = analysis_name, posterior_threshold = posterior_threshold, verbosity = verbosity, exports = exports), posterior_suppression_probability
 end
 
 ## HERE ENDS INTEGRATION WITH THE FUBAR INTERACE
