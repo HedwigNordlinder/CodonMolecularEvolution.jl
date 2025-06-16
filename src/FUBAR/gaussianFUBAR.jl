@@ -354,7 +354,6 @@ function FUBAR_analysis(method::SKBDIFUBAR, grid::FUBARGrid{T};
         m = m)
 
     thinned_supression_samples = supression_samples[(burnin+1):thinning:end]
-    println("Thinned suppression samples: ",thinned_supression_samples)
     analysis, posterior_suppression = FUBAR_tabulate_from_θ(method, θ, kernel_samples,thinned_supression_samples, grid, analysis_name, posterior_threshold = posterior_threshold, volume_scaling = volume_scaling, verbosity = verbosity, exports = exports)
     return analysis,posterior_suppression, (θ = θ,supression_samples=thinned_supression_samples, kernel_samples = kernel_samples[(burnin+1):thinning:end])
 end
