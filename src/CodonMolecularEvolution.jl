@@ -19,6 +19,7 @@ include("simulations/alphabeta/alphabeta.jl")
 include("simulations/ou_hb.jl")
 include("FUBAR/gaussianFUBAR.jl")
 include("FUBAR/grid_utilities.jl")
+include("simulations/alignment_simulations.jl")
 export 
     difFUBARBaseline,
     difFUBARParallel,
@@ -44,5 +45,7 @@ export
     alphabetagrid,
     DirichletFUBAR,
     FIFEFUBAR,
-    FUBARGrid
+    FUBARGrid,
+    simulate_alignment,
+    simulate_k_diversifying_sites
 end
