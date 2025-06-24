@@ -49,7 +49,6 @@ function simulate_k_diversifying_sites(ntaxa, Ne, sample_rate, α_distribution::
     diversifying_indices = shuffle(1:nsites)[1:diversifying_sites]
     α_vector = Vector{Float64}()
     β_vector = Vector{Float64}()
-    β_vector = []
     for i in 1:nsites
         α = 0
         β = 0
