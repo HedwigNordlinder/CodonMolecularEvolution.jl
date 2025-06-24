@@ -47,7 +47,8 @@ end
 
 function simulate_k_diversifying_sites(ntaxa, Ne, sample_rate, α_distribution::Distribution, β_distribution::Distribution, nsites,diversifying_sites, nucleotide_matrix::Array{Float64,2}, f3x4_matrix::Array{Float64,2}; target_normalisation=1.0)
     diversifying_indices = shuffle(1:nsites)[1:diversifying_sites]
-    α_vector = []
+    α_vector = Vector{Float64}()
+    β_vector = Vector{Float64}()
     β_vector = []
     for i in 1:nsites
         α = 0
