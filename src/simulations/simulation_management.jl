@@ -44,7 +44,7 @@ function run_simulation_batch(config_file::String, output_dir::String; resume=fa
             save_simulation_data(result; name=joinpath(scenario_dir, scenario_name))
             
             # Thread-safe logging
-            log_message = "$(now()): SUCCESS - $scenario_name (Thread $(Threads.threadid()))\n"
+            log_message = "SUCCESS - $scenario_name (Thread $(Threads.threadid()))\n"
             lock(lock) do
                 open(log_file, "a") do f
                     write(f, log_message)
@@ -53,7 +53,7 @@ function run_simulation_batch(config_file::String, output_dir::String; resume=fa
             
         catch e
             # Thread-safe error logging
-            error_msg = "$(now()): ERROR - $scenario_name: $e (Thread $(Threads.threadid()))\n"
+            error_msg = "ERROR - $scenario_name: $e (Thread $(Threads.threadid()))\n"
             println("Thread $(Threads.threadid()): Error in scenario $scenario_name: $e")
             lock = ReentrantLock()
             lock(lock) do
