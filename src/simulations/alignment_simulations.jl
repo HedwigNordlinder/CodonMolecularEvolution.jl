@@ -123,7 +123,7 @@ function simulate_k_diversifying_sites(ntaxa, Ne, sample_rate, α_distribution::
     end
     return simulate_alignment(ntaxa, Ne, sample_rate, α_vector, β_vector, nucleotide_matrix, f3x4_matrix, target_normalisation = target_normalisation)
 end
-function save_simulation_data(res::SimulationResult; name = "simulation_data", save_scenario_info = true)
+function save_simulation_data(res::SimulationResult; name = "simulation_data")
     write(name*".nwk", newick(res.tree))
     write_fasta(name*".fasta", res.nucs; seq_names=res.nuc_names)
     
@@ -132,24 +132,6 @@ function save_simulation_data(res::SimulationResult; name = "simulation_data", s
         betavec = res.betavec, 
         diversifying_ground_truth = res.betavec .> res.alphavec
     )
-    
-    # Add scenario type information if available
-    if save_scenario_info && res.scenario !== nothing
-        ground_truth_frame.scenario_type = fill(string(typeof(res.scenario)), length(res.alphavec))
-    end
-    
+
     CSV.write(name*"_rates.csv", ground_truth_frame)
-    
-    # Optionally save scenario parameters
-    if save_scenario_info && res.scenario !== nothing
-        scenario_info = Dict{String, Any}()
-        for field in fieldnames(typeof(res.scenario))
-            scenario_info[string(field)] = getfield(res.scenario, field)
-        end
-        
-        # Save as JSON for easy reading
-        open(name*"_scenario.json", "w") do f
-            JSON.print(f, scenario_info, 2)
-        end
-    end
 end
