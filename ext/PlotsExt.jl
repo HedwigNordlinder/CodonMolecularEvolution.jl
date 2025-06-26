@@ -385,7 +385,7 @@ function plot_loglog_rates(result::CodonMolecularEvolution.SimulationResult)
     p1 = scatter(log.(result.alphavec), log.(result.betavec),
                 xlabel = "log(α)",
                 ylabel = "log(β)", 
-                title = "Log-Log Plot of Rates: "*simulation_name,
+                title = "Log-Log Plot of Rates",
                 label = "Data points",
                 alpha = 0.7,
                 markersize = 4)
@@ -399,7 +399,7 @@ function plot_loglog_rates(result::CodonMolecularEvolution.SimulationResult)
     p2 = histogram(result.alphavec,
                    xlabel = "α",
                    ylabel = "Frequency",
-                   title = "Distribution of α: "*simulation_name,
+                   title = "Distribution of α",
                    alpha = 0.7,
                    color = :blue,
                    bins = 30)
@@ -408,7 +408,7 @@ function plot_loglog_rates(result::CodonMolecularEvolution.SimulationResult)
     p3 = histogram(result.betavec,
                    xlabel = "β",
                    ylabel = "Frequency", 
-                   title = "Distribution of β: "*simulation_name,
+                   title = "Distribution of β",
                    alpha = 0.7,
                    color = :green,
                    bins = 30)
