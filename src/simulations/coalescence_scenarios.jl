@@ -314,8 +314,102 @@ struct LogisticScenario <: CoalescenceScenario
     # Constant sampling rate (from sim_tree(100, n, 20.0))
     return scenario.sampling_rate
  end
-# Usage examples:
-# hiv = HIVScenario()  # uses all defaults
-# hiv_custom = HIVScenario(baseline_Ne=1000, treatment_epochs=[0.2, 0.5, 0.8])
-# Ne_t = effective_population_size(hiv, 0.5)
-# sample_rate_t = sampling_rate(hiv, 0.5)
+
+ # Save any coalescence scenario to JSON
+function save_scenario(scenario::CoalescenceScenario, filename::String)
+    # Create a dictionary with type information
+    scenario_dict = Dict(
+        "type" => string(typeof(scenario)),
+        "data" => scenario
+    )
+    
+    # Write to file
+    open(filename, "w") do file
+        JSON3.pretty(file, scenario_dict)
+    end
+    
+    println("Scenario saved to $filename")
+end
+
+# Load a coalescence scenario from JSON
+function load_scenario(filename::String)::CoalescenceScenario
+    # Read and parse JSON
+    json_data = JSON3.read(read(filename, String))
+    
+    # Extract type and data
+    scenario_type = json_data.type
+    scenario_data = json_data.data
+    
+    # Reconstruct the appropriate scenario type
+    if scenario_type == "HIVScenario"
+        return HIVScenario(
+            scenario_data.baseline_Ne,
+            scenario_data.treatment_epochs,
+            scenario_data.bottleneck_severity,
+            scenario_data.resistance_recovery,
+            scenario_data.recovery_rate,
+            scenario_data.base_rate,
+            scenario_data.treatment_failure_boost,
+            scenario_data.failure_detection_delay,
+            scenario_data.sampling_window
+        )
+    elseif scenario_type == "InfluenzaScenario"
+        return InfluenzaScenario(
+            scenario_data.baseline_Ne,
+            scenario_data.antigenic_epochs,
+            scenario_data.sweep_duration,
+            scenario_data.sweep_bottleneck,
+            scenario_data.seasonal_amplitude,
+            scenario_data.peak_time,
+            scenario_data.period,
+            scenario_data.base_rate,
+            scenario_data.geographic_bias,
+            scenario_data.nh_peak_time,
+            scenario_data.sh_peak_time,
+            scenario_data.surveillance_ramp_up,
+            scenario_data.enhancement_factor
+        )
+    elseif scenario_type == "COVIDScenario"
+        return COVIDScenario(
+            scenario_data.baseline_Ne,
+            scenario_data.variant_emergences,
+            scenario_data.growth_advantages,
+            scenario_data.displacement_rate,
+            scenario_data.global_control_measures,
+            scenario_data.base_rate,
+            scenario_data.sequencing_ramp_up,
+            scenario_data.variant_concern_periods,
+            scenario_data.geographic_inequality,
+            scenario_data.concern_duration,
+            scenario_data.max_sampling_rate
+        )
+    elseif scenario_type == "LogisticGrowthScenario"
+        return LogisticGrowthScenario(
+            scenario_data.carrying_capacity,
+            scenario_data.growth_rate,
+            scenario_data.initial_population,
+            scenario_data.inflection_time,
+            scenario_data.base_rate,
+            scenario_data.detection_threshold,
+            scenario_data.detection_delay,
+            scenario_data.reactive_multiplier,
+            scenario_data.investigation_duration
+        )
+    elseif scenario_type == "SeasonalScenario"
+        return SeasonalScenario(
+            scenario_data.sin_divisor,
+            scenario_data.amplitude,
+            scenario_data.baseline_exp,
+            scenario_data.sampling_divisor
+        )
+    elseif scenario_type == "LogisticScenario"
+        return LogisticScenario(
+            scenario_data.carrying_capacity,
+            scenario_data.growth_steepness,
+            scenario_data.inflection_point,
+            scenario_data.sampling_rate
+        )
+    else
+        error("Unknown scenario type: $scenario_type")
+    end
+end

@@ -134,4 +134,5 @@ function save_simulation_data(res::SimulationResult; name = "simulation_data")
     )
 
     CSV.write(name*"_rates.csv", ground_truth_frame)
+    if !isnothing(res.scenario) save_scenario(res.scenario, name*"_scenario.json") end
 end
