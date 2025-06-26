@@ -63,8 +63,9 @@ function simulate_k_diversifying_sites(ntaxa, Ne, sample_rate, α_distribution::
 end
 
 function save_simulation_data(res::SimulationResult; name = "simulation_data")
-    write_nexus(name*".nwk",res.tree)
+    write(name*".nwk",newick(res.tree))
     write_fasta(name*".fasta",res.nucs;seq_names=res.nuc_names)
     ground_truth_frame = DataFrame(alphavec = res.alphavec, betavec = res.betavec, diversifying_ground_truth = res.betavec .> res.alphavec)
     CSV.write(name*"_rates.csv",ground_truth_frame)
 end 
+
