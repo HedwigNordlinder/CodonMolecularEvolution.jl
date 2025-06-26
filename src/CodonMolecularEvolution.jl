@@ -19,8 +19,8 @@ include("simulations/alphabeta/alphabeta.jl")
 include("simulations/ou_hb.jl")
 include("FUBAR/gaussianFUBAR.jl")
 include("FUBAR/grid_utilities.jl")
-include("simulations/alignment_simulations.jl")
 include("simulations/coalescence_scenarios.jl")
+include("simulations/alignment_simulations.jl")
 export 
     difFUBARBaseline,
     difFUBARParallel,
