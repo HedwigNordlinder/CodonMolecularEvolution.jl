@@ -44,7 +44,6 @@ function rejection_sample(distribution_a::Distribution, distribution_b::Distribu
     end
     return a,b
 end
-
 function simulate_k_diversifying_sites(ntaxa, Ne, sample_rate, α_distribution::Distribution, β_distribution::Distribution, nsites,diversifying_sites, nucleotide_matrix::Array{Float64,2}, f3x4_matrix::Array{Float64,2}; target_normalisation=1.0)
     diversifying_indices = shuffle(1:nsites)[1:diversifying_sites]
     α_vector = Vector{Float64}()
@@ -62,3 +61,10 @@ function simulate_k_diversifying_sites(ntaxa, Ne, sample_rate, α_distribution::
     end
     return simulate_alignment(ntaxa, Ne, sample_rate, α_vector, β_vector, nucleotide_matrix, f3x4_matrix, target_normalisation = target_normalisation)
 end
+
+function save_simulation_data(res::SimulationResult; name = "simulation_data")
+    write_nexus(name*".nwk",res.tree)
+    write_fasta(name*".fasta",res.nucs;seq_names=res.nuc_names)
+    ground_truth_frame = DataFrame(alphavec = res.alphavec, betavec = res.betavec, diversifying_ground_truth = res.betavec .> res.alphavec)
+    CSV.write(name*"_rates.csv",ground_truth_frame)
+end 

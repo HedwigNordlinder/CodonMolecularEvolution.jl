@@ -47,5 +47,6 @@ export
     FIFEFUBAR,
     FUBARGrid,
     simulate_alignment,
-    simulate_k_diversifying_sites
+    simulate_k_diversifying_sites,
+    save_simulation_data
 end
