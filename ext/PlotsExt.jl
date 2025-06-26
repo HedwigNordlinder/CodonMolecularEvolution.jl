@@ -479,7 +479,7 @@ function CodonMolecularEvolution.save_tree_report(result::CodonMolecularEvolutio
         plot_title = "Tree Report",
         plot_titlefontsize = 16)
     end
-    savefig(combined_plot, output_filename)
+    savefig(combined_plot, output_filename*".pdf")
     
     println("Tree report saved to: ", output_filename)
     return output_filename
