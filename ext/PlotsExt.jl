@@ -454,7 +454,7 @@ function CodonMolecularEvolution.save_tree_report(result::CodonMolecularEvolutio
     end
     
     # Generate all plots
-    tree_plot = plot_tree(simulation_name)
+    tree_plot = plot_simulated_tree(simulation_name)
     scatter_plot, alpha_hist, beta_hist = plot_loglog_rates(simulation_name)
     scenario_p1, scenario_p2 = plot_scenario_information(simulation_name)
     
