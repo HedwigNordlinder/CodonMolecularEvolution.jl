@@ -60,5 +60,6 @@ export
     SeasonalScenario,
     LogisticScenario,
     effective_population_size,
-    sampling_rate
+    sampling_rate, 
+    load_scenario
 end
