@@ -265,7 +265,7 @@ function sampling_rate(scenario::LogisticGrowthScenario, t::Real)
 
     return rate
 end
-struct BasicStarScenario <: CoalescenceScenario
+struct SeasonalScenario <: CoalescenceScenario
     sin_divisor::Float64          # divisor in sin(t/divisor) - controls oscillation frequency
     amplitude::Float64            # amplitude multiplier for sin function
     baseline_exp::Float64         # baseline exponent (shifts entire curve up/down)
@@ -273,24 +273,24 @@ struct BasicStarScenario <: CoalescenceScenario
 end
 
 # Constructor with defaults matching your screenshot
-BasicStarScenario(;
+SeasonalScenario(;
     sin_divisor=10.0,
     amplitude=2.0,
     baseline_exp=4.0,
     sampling_divisor=100.0
-) = BasicStarScenario(sin_divisor, amplitude, baseline_exp, sampling_divisor)
+) = SeasonalScenario(sin_divisor, amplitude, baseline_exp, sampling_divisor)
 
-function effective_population_size(scenario::BasicStarScenario, t::Real)
+function effective_population_size(scenario::SeasonalScenario, t::Real)
     # n(t) = exp(sin(t/sin_divisor) * amplitude + baseline_exp)
     return exp(sin(t / scenario.sin_divisor) * scenario.amplitude + scenario.baseline_exp)
 end
 
-function sampling_rate(scenario::BasicStarScenario, t::Real)
+function sampling_rate(scenario::SeasonalScenario, t::Real)
     # s(t) = n(t)/sampling_divisor
     Ne = effective_population_size(scenario, t)
     return Ne / scenario.sampling_divisor
 end
-struct BasicLadderScenario <: CoalescenceScenario
+struct LogisticScenario <: CoalescenceScenario
     carrying_capacity::Float64    # maximum population size (K in logistic equation)
     growth_steepness::Float64     # steepness of the logistic curve
     inflection_point::Float64     # time point where growth rate is maximum
@@ -298,19 +298,24 @@ struct BasicLadderScenario <: CoalescenceScenario
  end
  
  # Constructor with defaults matching your screenshot
- BasicLadderScenario(;
+ LogisticScenario(;
     carrying_capacity = 10000.0,
     growth_steepness = 1.0,       # controls steepness (1 in exp(t-10))
     inflection_point = 10.0,      # inflection point at t=10
     sampling_rate = 20.0          # constant sampling rate
- ) = BasicLadderScenario(carrying_capacity, growth_steepness, inflection_point, sampling_rate)
+ ) = LogisticScenario(carrying_capacity, growth_steepness, inflection_point, sampling_rate)
  
- function effective_population_size(scenario::BasicLadderScenario, t::Real)
+ function effective_population_size(scenario::LogisticScenario, t::Real)
     # n(t) = carrying_capacity / (1 + exp(growth_steepness * (t - inflection_point)))
     return scenario.carrying_capacity / (1 + exp(scenario.growth_steepness * (t - scenario.inflection_point)))
  end
  
- function sampling_rate(scenario::BasicLadderScenario, t::Real)
+ function sampling_rate(scenario::LogisticScenario, t::Real)
     # Constant sampling rate (from sim_tree(100, n, 20.0))
     return scenario.sampling_rate
  end
+# Usage examples:
+# hiv = HIVScenario()  # uses all defaults
+# hiv_custom = HIVScenario(baseline_Ne=1000, treatment_epochs=[0.2, 0.5, 0.8])
+# Ne_t = effective_population_size(hiv, 0.5)
+# sample_rate_t = sampling_rate(hiv, 0.5)

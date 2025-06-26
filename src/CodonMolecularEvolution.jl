@@ -56,8 +56,8 @@ export
     InfluenzaScenario,
     COVIDScenario,
     LogisticGrowthScenario,
-    BasicStarScenario,
-    BasicLadderScenario,
+    SeasonalScenario,
+    LogisticScenario,
     effective_population_size,
     sampling_rate
 end
