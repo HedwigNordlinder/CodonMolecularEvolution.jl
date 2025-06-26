@@ -22,6 +22,7 @@ include("FUBAR/gaussianFUBAR.jl")
 include("FUBAR/grid_utilities.jl")
 include("simulations/coalescence_scenarios.jl")
 include("simulations/alignment_simulations.jl")
+include("simulations/simulation_management.jl")
 export 
     difFUBARBaseline,
     difFUBARParallel,
@@ -61,5 +62,6 @@ export
     LogisticScenario,
     effective_population_size,
     sampling_rate, 
-    load_scenario
+    load_scenario,
+    run_simulation_batch
 end
