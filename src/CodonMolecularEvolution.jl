@@ -55,6 +55,9 @@ export
     HIVScenario,
     InfluenzaScenario,
     COVIDScenario,
+    LogisticGrowthScenario,
+    BasicStarScenario,
+    BasicLadderScenario,
     effective_population_size,
     sampling_rate
 end
