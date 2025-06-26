@@ -447,7 +447,7 @@ function plot_scenario_information(scenario::CoalescenceScenario)
     
     return p1, p2
 end
-function CodonMolecularEvolution.save_tree_report(result::SimulationResult, output_filename=nothing)
+function CodonMolecularEvolution.save_tree_report(result::CodonMolecularEvolution.SimulationResult, output_filename=nothing)
     # Set default filename if not provided
     if output_filename === nothing
         output_filename = simulation_name * "_tree_report.pdf"
