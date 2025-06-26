@@ -20,6 +20,7 @@ include("simulations/ou_hb.jl")
 include("FUBAR/gaussianFUBAR.jl")
 include("FUBAR/grid_utilities.jl")
 include("simulations/alignment_simulations.jl")
+include("simulations/coalescence_scenarios.jl")
 export 
     difFUBARBaseline,
     difFUBARParallel,
@@ -48,5 +49,11 @@ export
     FUBARGrid,
     simulate_alignment,
     simulate_k_diversifying_sites,
-    save_simulation_data
+    save_simulation_data,
+    # Coalescence scenarios
+    HIVScenario,
+    InfluenzaScenario,
+    COVIDScenario,
+    effective_population_size,
+    sampling_rate
 end

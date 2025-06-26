@@ -1,3 +1,4 @@
+# Enhanced SimulationResult to optionally store the scenario
 struct SimulationResult 
     grid::FUBARGrid
     tree
@@ -5,8 +6,69 @@ struct SimulationResult
     nuc_names
     alphavec
     betavec
+    scenario::Union{CoalescenceScenario, Nothing}  # Optional scenario storage
+end
+SimulationResult(grid, tree, nucs, nuc_names, alphavec, betavec) = 
+    SimulationResult(grid, tree, nucs, nuc_names, alphavec, betavec, nothing)
+# Add new methods that dispatch on CoalescenceScenario
+function simulate_alignment(ntaxa, scenario::CoalescenceScenario, alphavec::Vector{Float64}, betavec::Vector{Float64}, nucleotide_matrix::Array{Float64,2}, f3x4_matrix::Array{Float64,2}; target_normalisation=1.0)
+    # Create wrapper functions that capture the scenario
+    Ne_func(t) = effective_population_size(scenario, t)
+    sample_rate_func(t) = sampling_rate(scenario, t)
+    
+    return simulate_alignment(ntaxa, Ne_func, sample_rate_func, alphavec, betavec, nucleotide_matrix, f3x4_matrix; target_normalisation=target_normalisation)
 end
 
+function simulate_alignment(ntaxa, scenario::CoalescenceScenario, alpha_distribution::Distribution, beta_distribution::Distribution, nsites, nucleotide_matrix::Array{Float64,2}, f3x4_matrix::Array{Float64,2}; target_normalisation=1.0)
+    alphavec = rand(alpha_distribution, nsites)
+    betavec = rand(beta_distribution, nsites)
+    return simulate_alignment(ntaxa, scenario, alphavec, betavec, nucleotide_matrix, f3x4_matrix; target_normalisation=target_normalisation)
+end
+
+function simulate_alignment(ntaxa, scenario::CoalescenceScenario, rate_distribution::Distribution, nsites, nucleotide_matrix, f3x4_matrix; target_normalisation=1.0)
+    if length(rate_distribution) != 2
+        error("Rate distribution must be bivariate")
+    end
+    rates = rand(rate_distribution, nsites)
+    alphavec = rates[1, :]
+    betavec = rates[2, :]
+    return simulate_alignment(ntaxa, scenario, alphavec, betavec, nucleotide_matrix, f3x4_matrix; target_normalisation=target_normalisation)
+end
+
+function simulate_k_diversifying_sites(ntaxa, scenario::CoalescenceScenario, α_distribution::Distribution, β_distribution::Distribution, nsites, diversifying_sites, nucleotide_matrix::Array{Float64,2}, f3x4_matrix::Array{Float64,2}; target_normalisation=1.0)
+    diversifying_indices = shuffle(1:nsites)[1:diversifying_sites]
+    α_vector = Vector{Float64}()
+    β_vector = Vector{Float64}()
+    
+    for i in 1:nsites
+        α = 0
+        β = 0
+        if i ∈ diversifying_indices
+            α, β = rejection_sample(α_distribution, β_distribution, (a,b) -> b > a)
+        else 
+            α, β = rejection_sample(α_distribution, β_distribution, (a,b) -> a > b)
+        end
+        push!(α_vector, α)
+        push!(β_vector, β)
+    end
+    
+    return simulate_alignment(ntaxa, scenario, α_vector, β_vector, nucleotide_matrix, f3x4_matrix; target_normalisation=target_normalisation)
+end
+function simulate_alignment(ntaxa, scenario::CoalescenceScenario, alphavec::Vector{Float64}, betavec::Vector{Float64}, nucleotide_matrix::Array{Float64,2}, f3x4_matrix::Array{Float64,2}; target_normalisation=1.0)
+    Ne_func(t) = effective_population_size(scenario, t)
+    sample_rate_func(t) = sampling_rate(scenario, t)
+    
+    tree = sim_tree(ntaxa, Ne_func, sample_rate_func)
+    total_branch_length = sum([n.branchlength for n in getnodelist(tree)])
+    for n in getnodelist(tree)
+        n.branchlength *= (target_normalisation / total_branch_length)
+    end
+    nucs, nuc_names, tre = sim_alphabeta_seqs(alphavec, betavec, tree, nucleotide_matrix, f3x4_matrix)
+    nucs, nuc_names, newick_tre = nucs, nuc_names, newick(tre)
+
+    result = SimulationResult(alphabetagrid(nuc_names, nucs, newick_tre), tre, nucs, nuc_names, alphavec, betavec, scenario)
+    return result
+end
 function simulate_alignment(ntaxa, Ne, sample_rate, alphavec::Vector{Float64}, betavec::Vector{Float64}, nucleotide_matrix::Array{Float64,2}, f3x4_matrix::Array{Float64,2}; target_normalisation=1.0)
     tree = sim_tree(ntaxa, Ne, sample_rate)
     total_branch_length = sum([n.branchlength for n in getnodelist(tree)])
@@ -61,11 +123,33 @@ function simulate_k_diversifying_sites(ntaxa, Ne, sample_rate, α_distribution::
     end
     return simulate_alignment(ntaxa, Ne, sample_rate, α_vector, β_vector, nucleotide_matrix, f3x4_matrix, target_normalisation = target_normalisation)
 end
-
-function save_simulation_data(res::SimulationResult; name = "simulation_data")
-    write(name*".nwk",newick(res.tree))
-    write_fasta(name*".fasta",res.nucs;seq_names=res.nuc_names)
-    ground_truth_frame = DataFrame(alphavec = res.alphavec, betavec = res.betavec, diversifying_ground_truth = res.betavec .> res.alphavec)
-    CSV.write(name*"_rates.csv",ground_truth_frame)
-end 
-
+function save_simulation_data(res::SimulationResult; name = "simulation_data", save_scenario_info = true)
+    write(name*".nwk", newick(res.tree))
+    write_fasta(name*".fasta", res.nucs; seq_names=res.nuc_names)
+    
+    ground_truth_frame = DataFrame(
+        alphavec = res.alphavec, 
+        betavec = res.betavec, 
+        diversifying_ground_truth = res.betavec .> res.alphavec
+    )
+    
+    # Add scenario type information if available
+    if save_scenario_info && res.scenario !== nothing
+        ground_truth_frame.scenario_type = fill(string(typeof(res.scenario)), length(res.alphavec))
+    end
+    
+    CSV.write(name*"_rates.csv", ground_truth_frame)
+    
+    # Optionally save scenario parameters
+    if save_scenario_info && res.scenario !== nothing
+        scenario_info = Dict{String, Any}()
+        for field in fieldnames(typeof(res.scenario))
+            scenario_info[string(field)] = getfield(res.scenario, field)
+        end
+        
+        # Save as JSON for easy reading
+        open(name*"_scenario.json", "w") do f
+            JSON.print(f, scenario_info, 2)
+        end
+    end
+end
