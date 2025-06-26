@@ -376,10 +376,10 @@ function plot_skbdi_mixing(results::CodonMolecularEvolution.BayesianFUBARResults
     
 end
 
-function plot_simulated_tree(result::SimulationResult)
+function plot_simulated_tree(result::CodonMolecularEvolution.SimulationResult)
     return plot(get_phylo_tree(result.tree))
 end
-function plot_loglog_rates(result::SimulationResult)
+function plot_loglog_rates(result::CodonMolecularEvolution.SimulationResult)
 
     # Create scatter plot with log-transformed data
     p1 = scatter(log.(result.alphavec), log.(result.betavec),
@@ -416,7 +416,7 @@ function plot_loglog_rates(result::SimulationResult)
     return p1, p2, p3
 end
 function plot_scenario_information(scenario::Nothing) return nothing,nothing end
-function plot_scenario_information(scenario::CoalescenceScenario) 
+function plot_scenario_information(scenario::CodonMolecularEvolution.CoalescenceScenario) 
     Ne = t -> effective_population_size(scenario, t)
     s = t -> sampling_rate(scenario, t)  # renamed to avoid conflict
     
