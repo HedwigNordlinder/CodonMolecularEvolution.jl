@@ -51,6 +51,7 @@ export
     simulate_k_diversifying_sites,
     save_simulation_data,
     # Coalescence scenarios
+    CoalescenceScenario,
     HIVScenario,
     InfluenzaScenario,
     COVIDScenario,
