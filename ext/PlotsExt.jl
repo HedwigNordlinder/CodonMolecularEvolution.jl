@@ -469,14 +469,14 @@ function CodonMolecularEvolution.save_tree_report(result::CodonMolecularEvolutio
                         scenario_p1, scenario_p2,
                         layout = @layout([a; [b c d]; [e f]]),
                         size = (1200, 1200),
-                        plot_title = "Tree Report: " * simulation_name,
+                        plot_title = "Tree Report",
                         plot_titlefontsize = 16)
     else 
         combined_plot = plot(tree_plot, 
         scatter_plot, alpha_hist, beta_hist,
         layout = @layout([a; [b c d]; [e f]]),
         size = (1200, 1200),
-        plot_title = "Tree Report: " * simulation_name,
+        plot_title = "Tree Report",
         plot_titlefontsize = 16)
     end
     savefig(combined_plot, output_filename)
