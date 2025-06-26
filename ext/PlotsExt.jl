@@ -450,13 +450,13 @@ end
 function CodonMolecularEvolution.save_tree_report(result::CodonMolecularEvolution.SimulationResult, output_filename=nothing)
     # Set default filename if not provided
     if output_filename === nothing
-        output_filename = simulation_name * "_tree_report.pdf"
+        output_filename = "tree_report.pdf"
     end
     
     # Generate all plots
-    tree_plot = plot_simulated_tree(simulation_name)
-    scatter_plot, alpha_hist, beta_hist = plot_loglog_rates(simulation_name)
-    scenario_p1, scenario_p2 = plot_scenario_information(simulation_name)
+    tree_plot = plot_simulated_tree(result)
+    scatter_plot, alpha_hist, beta_hist = plot_loglog_rates(result)
+    scenario_p1, scenario_p2 = plot_scenario_information(result.scenario)
     
     # Create a combined layout with all plots
     # Tree on top row
