@@ -9,6 +9,8 @@ struct SimulationResult
     scenario::Union{CoalescenceScenario, Nothing}  # Optional scenario storage
 end
 
+function total_branch_length(tree::FelNode) return sum([n.branchlength for n in getnodelist(tree)]) end
+
 # Constructor that defaults grid to nothing when not provided
 SimulationResult(grid, tree, nucs, nuc_names, alphavec, betavec) = 
     SimulationResult(grid, tree, nucs, nuc_names, alphavec, betavec, nothing)
@@ -63,9 +65,9 @@ function simulate_alignment(ntaxa, scenario::CoalescenceScenario, alphavec::Vect
     sample_rate_func(t) = sampling_rate(scenario, t)
     
     tree = sim_tree(ntaxa, Ne_func, sample_rate_func)
-    total_branch_length = sum([n.branchlength for n in getnodelist(tree)])
+    tbl = total_branch_length(tree)
     for n in getnodelist(tree)
-        n.branchlength *= (target_normalisation / total_branch_length)
+        n.branchlength *= (target_normalisation / tbl)
     end
     nucs, nuc_names, tre = sim_alphabeta_seqs(alphavec, betavec, tree, nucleotide_matrix, f3x4_matrix)
     nucs, nuc_names, newick_tre = nucs, nuc_names, newick(tre)
@@ -149,4 +151,16 @@ function save_simulation_data(res::SimulationResult; name = "simulation_data")
 
     CSV.write(name*"_rates.csv", ground_truth_frame)
     if !isnothing(res.scenario) save_scenario(res.scenario, name*"_scenario.json") end
+end
+
+
+
+# Function that computes the total number of expected substitutions under the codon model
+# This function should take in the codon model and branch length, assume the substitution process starts at stationarity etc
+function compute_total_diversity(res::SimulationResult;nucleotide_matrix = CodonMolecularEvolution.demo_nucmat, f3x4_matrix = CodonMolecularEvolution.f3x4)
+    π_eq = MolecularEvolution.F3x4_eq_freqs(f3x4_matrix)
+    Q = MolecularEvolution.MG94_F3x4(1.0,1.0,nucleotide_matrix, f3x4_matrix)
+    total_substitution_rate = -sum(π_eq .* diag(Q))
+    expected_substitutions = total_substitution_rate*total_branch_length(res.tree)
+    return total_substitution_rate, expected_substitutions
 end
