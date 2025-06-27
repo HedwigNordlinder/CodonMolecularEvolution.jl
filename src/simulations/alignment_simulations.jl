@@ -157,7 +157,7 @@ end
 
 # Function that computes the total number of expected substitutions under the codon model
 # This function should take in the codon model and branch length, assume the substitution process starts at stationarity etc
-function compute_total_diversity(res::SimulationResult;nucleotide_matrix = CodonMolecularEvolution.demo_nucmat, f3x4_matrix = CodonMolecularEvolution.f3x4)
+function compute_total_diversity(res::SimulationResult;nucleotide_matrix = CodonMolecularEvolution.demo_nucmat, f3x4_matrix = CodonMolecularEvolution.demo_f3x4)
     π_eq = MolecularEvolution.F3x4_eq_freqs(f3x4_matrix)
     Q = MolecularEvolution.MG94_F3x4(1.0,1.0,nucleotide_matrix, f3x4_matrix)
     total_substitution_rate = -sum(π_eq .* diag(Q))
