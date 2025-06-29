@@ -151,8 +151,9 @@ function process_single_directory(dirname::String, subdir::String, fasta_file::S
             seqs = collect(FASTAReader(io))
         end
         
-        seqnames = [identifier(seq) for seq in seqs]
-        sequences = [sequence(seq) for seq in seqs]
+        # Convert to regular strings to avoid StringView issues
+        seqnames = String[identifier(seq) for seq in seqs]
+        sequences = String[sequence(seq) for seq in seqs]
         
         # Read tree if available, otherwise use default
         treestring = nothing
@@ -177,7 +178,7 @@ function process_single_directory(dirname::String, subdir::String, fasta_file::S
             end
             
             try
-                # Create grid
+                # Create grid using the correct function signature
                 grid = alphabetagrid(seqnames, sequences, treestring, verbosity=verbosity-1)
                 
                 # Run analysis with plotting disabled using dispatch
