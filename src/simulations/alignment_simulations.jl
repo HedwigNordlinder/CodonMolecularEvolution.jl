@@ -111,25 +111,37 @@ end
 
 # Only allow base samplers as base samplers
 function AllSitesSampler(base_sampler::UnivariateRateSampler)
-    return AllSitesSampler(base_sampler)
+    return Base.@invoke AllSitesSampler(
+               base_sampler::Union{UnivariateRateSampler,BivariateRateSampler})
 end
 
 function AllSitesSampler(base_sampler::BivariateRateSampler)
-    return AllSitesSampler(base_sampler)
+    return Base.@invoke AllSitesSampler(
+               base_sampler::Union{UnivariateRateSampler,BivariateRateSampler})
 end
 
-function DiversifyingSitesSampler(base_sampler::UnivariateRateSampler, diversifying_sites::Int, total_sites::Int)
+function DiversifyingSitesSampler(
+            base_sampler::UnivariateRateSampler,
+            diversifying_sites::Int,
+            total_sites::Int)
     if diversifying_sites > total_sites
         error("Number of diversifying sites cannot exceed total sites")
     end
-    return DiversifyingSitesSampler(base_sampler, diversifying_sites, total_sites)
+    return Base.@invoke DiversifyingSitesSampler(
+               base_sampler::Union{UnivariateRateSampler,BivariateRateSampler},
+               diversifying_sites::Int, total_sites::Int)
 end
 
-function DiversifyingSitesSampler(base_sampler::BivariateRateSampler, diversifying_sites::Int, total_sites::Int)
+function DiversifyingSitesSampler(
+            base_sampler::BivariateRateSampler,
+            diversifying_sites::Int,
+            total_sites::Int)
     if diversifying_sites > total_sites
         error("Number of diversifying sites cannot exceed total sites")
     end
-    return DiversifyingSitesSampler(base_sampler, diversifying_sites, total_sites)
+    return Base.@invoke DiversifyingSitesSampler(
+               base_sampler::Union{UnivariateRateSampler,BivariateRateSampler},
+               diversifying_sites::Int, total_sites::Int)
 end
 
 # Single unified simulation method
