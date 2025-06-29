@@ -167,12 +167,14 @@ end
 
 struct DirichletFUBAR <: BayesianFUBARMethod end
 
-function FUBAR_tabulate_from_θ(method::DirichletFUBAR, θ, grid::FUBARGrid, analysis_name; posterior_threshold = 0.95, volume_scaling = 1.0, verbosity = 1, exports = true)
+function FUBAR_tabulate_from_θ(method::DirichletFUBAR, θ, grid::FUBARGrid, analysis_name; posterior_threshold = 0.95, volume_scaling = 1.0, verbosity = 1, exports = true, disable_plotting = false)
     results = FUBAR_bayesian_postprocessing(θ, grid)
     
     df_results = FUBAR_tabulate_results(DefaultBayesianFUBARMethod(),results, grid, analysis_name = analysis_name, posterior_threshold = posterior_threshold, exports = exports, verbosity = verbosity)
 
-    FUBAR_plot_results(PlotsExtDummy(), method, results, grid, analysis_name = analysis_name, posterior_threshold = posterior_threshold, volume_scaling = volume_scaling, exports = exports)
+    if !disable_plotting
+        FUBAR_plot_results(PlotsExtDummy(), method, results, grid, analysis_name = analysis_name, posterior_threshold = posterior_threshold, volume_scaling = volume_scaling, exports = exports)
+    end
 
     return df_results
 end
@@ -187,7 +189,8 @@ end
                   optimize_branch_lengths = false,
                   concentration = 0.5,
                   iterations = 2500,
-                  volume_scaling = 1.0) where {T}
+                  volume_scaling = 1.0,
+                  disable_plotting = false) where {T}
 
 Perform a Fast Unconstrained Bayesian AppRoximation (FUBAR) analysis using a Dirichlet process.
 
@@ -205,6 +208,7 @@ Perform a Fast Unconstrained Bayesian AppRoximation (FUBAR) analysis using a Dir
 - `concentration::Float64=0.5`: Concentration parameter for the Dirichlet process
 - `iterations::Int=2500`: Number of EM algorithm iterations
 - `volume_scaling::Float64=1.0`: Controls the scaling of the marginal parameter violin plots
+- `disable_plotting::Bool=false`: If true, disables all plotting even if plotting extensions are available
 
 # Returns
 - A tuple containing:
@@ -223,7 +227,8 @@ function FUBAR_analysis(method::DirichletFUBAR, grid::FUBARGrid{T};
     optimize_branch_lengths = false,
     concentration = 0.5,
     iterations = 2500,
-    volume_scaling = 1.0) where {T}
+    volume_scaling = 1.0,
+    disable_plotting = false) where {T}
     
     if exports
         init_path(analysis_name)
@@ -232,12 +237,9 @@ function FUBAR_analysis(method::DirichletFUBAR, grid::FUBARGrid{T};
     θ = FUBAR_fitEM(grid.cond_lik_matrix, iterations, concentration, 
                 verbosity = verbosity)
                 
-    df_results = FUBAR_tabulate_from_θ(method, θ, grid, analysis_name, posterior_threshold = posterior_threshold, volume_scaling = volume_scaling, verbosity = verbosity, exports = exports)
+    df_results = FUBAR_tabulate_from_θ(method, θ, grid, analysis_name, posterior_threshold = posterior_threshold, volume_scaling = volume_scaling, verbosity = verbosity, exports = exports, disable_plotting = disable_plotting)
 
     return df_results, (θ = θ, )
-
-
-
 end
 # END DIRICHLET FUBAR
 
@@ -293,7 +295,8 @@ struct FIFEFUBAR <: FUBARMethod end
                 analysis_name = "fife_analysis",
                 verbosity = 1,
                 exports = true,
-                positive_tail_only = false) where {T}
+                positive_tail_only = false,
+                disable_plotting = false) where {T}
 
 Perform a FUBAR type analysis using the FIFE (Frequentist Inference For Evolution) approach.
 
@@ -306,6 +309,7 @@ Perform a FUBAR type analysis using the FIFE (Frequentist Inference For Evolutio
 - `verbosity::Int=1`: Control level of output messages (0=none, higher values=more details)
 - `exports::Bool=true`: Whether to export results to files
 - `positive_tail_only::Bool=false`: If true, uses a one-tailed test for positive selection only
+- `disable_plotting::Bool=false`: If true, disables all plotting even if plotting extensions are available
 
 # Returns
 - `df_results::DataFrame`: A DataFrame containing the frequentist analysis results
@@ -321,7 +325,8 @@ function FUBAR_analysis(method::FIFEFUBAR, grid::FUBARGrid{T};
     analysis_name = "fife_analysis", 
     verbosity = 1, 
     exports = true,
-    positive_tail_only = false) where {T}
+    positive_tail_only = false,
+    disable_plotting = false) where {T}
     
     LLmatrix = reshape(grid.LL_matrix, length(grid.grid_values), 
                     length(grid.grid_values), :)
@@ -357,14 +362,14 @@ function FUBAR_analysis(method::FIFEFUBAR, grid::FUBARGrid{T};
         hzero_loglikelihood,
         fitted_rate_hzero
     )
-    df_results = FUBAR_tabulate_results(method,results, analysis_name = analysis_name, exports = exports)
+    df_results = FUBAR_tabulate_results(method,results, analysis_name = analysis_name, exports = exports, disable_plotting = disable_plotting)
     
     return df_results
 end
 
 
 
-function FUBAR_tabulate_results(method::FIFEFUBAR,results::FrequentistFUBARResults; analysis_name = "fife_analysis", exports = false)
+function FUBAR_tabulate_results(method::FIFEFUBAR,results::FrequentistFUBARResults; analysis_name = "fife_analysis", exports = false, disable_plotting = false)
     n_sites = length(results.site_p_value)
     
     df_results = DataFrame(

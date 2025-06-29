@@ -50,6 +50,8 @@ export
     DirichletFUBAR,
     FIFEFUBAR,
     FUBARGrid,
+    run_fubar_benchmark,
+    summarize_benchmark_results,
     simulate_alignment,
     simulate_k_diversifying_sites,
     save_simulation_data,

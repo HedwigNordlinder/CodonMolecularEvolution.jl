@@ -270,7 +270,8 @@ struct SKBDIFUBAR <: BayesianFUBARMethod end
                 ϵ = 1e-6,
                 n_samples = 1000,
                 burnin = 200,
-                thinning = 50) where {T}
+                thinning = 50,
+                disable_plotting = false) where {T}
 
 Perform a Fast Unconstrained Bayesian AppRoximation (FUBAR) analysis using the SKBDI (Smooth Kernel Bayesian Density Inference) approach.
 
@@ -293,6 +294,7 @@ Perform a Fast Unconstrained Bayesian AppRoximation (FUBAR) analysis using the S
 - `n_samples::Int=1000`: Number of MCMC samples to generate
 - `burnin::Int=200`: Number of initial samples to discard as burnin
 - `thinning::Int=50`: Interval for thinning samples to reduce autocorrelation
+- `disable_plotting::Bool=false`: If true, disables all plotting even if plotting extensions are available
 
 # Returns
 - A tuple containing:
@@ -321,7 +323,8 @@ function FUBAR_analysis(method::SKBDIFUBAR, grid::FUBARGrid{T};
     ϵ = 1e-6, 
     n_samples = 1000, 
     burnin = 200,
-    thinning = 50) where {T}
+    thinning = 50,
+    disable_plotting = false) where {T}
 
     @assert n_samples > burnin
     if isnothing(supression_type)
@@ -354,14 +357,18 @@ function FUBAR_analysis(method::SKBDIFUBAR, grid::FUBARGrid{T};
         m = m)
 
     thinned_supression_samples = supression_samples[(burnin+1):thinning:end]
-    analysis, posterior_suppression = FUBAR_tabulate_from_θ(method, θ, kernel_samples,thinned_supression_samples, grid, analysis_name, posterior_threshold = posterior_threshold, volume_scaling = volume_scaling, verbosity = verbosity, exports = exports)
+    analysis, posterior_suppression = FUBAR_tabulate_from_θ(method, θ, kernel_samples,thinned_supression_samples, grid, analysis_name, posterior_threshold = posterior_threshold, volume_scaling = volume_scaling, verbosity = verbosity, exports = exports, disable_plotting = disable_plotting)
     return analysis,posterior_suppression, (θ = θ,supression_samples=thinned_supression_samples, kernel_samples = kernel_samples[(burnin+1):thinning:end])
 end
 
-function FUBAR_tabulate_from_θ(method::SKBDIFUBAR, θ, kernel_samples,suppression_samples, grid::FUBARGrid, analysis_name; posterior_threshold = 0.95, volume_scaling = 1.0, verbosity = 1, exports = true)
+function FUBAR_tabulate_from_θ(method::SKBDIFUBAR, θ, kernel_samples,suppression_samples, grid::FUBARGrid, analysis_name; posterior_threshold = 0.95, volume_scaling = 1.0, verbosity = 1, exports = true, disable_plotting = false)
     results = FUBAR_bayesian_postprocessing(θ, grid, kernel_samples, suppression_samples)
     analysis, posterior_suppression = FUBAR_tabulate_results(method, results,grid,analysis_name = analysis_name, posterior_threshold = posterior_threshold, verbosity = verbosity, exports = exports)
-    FUBAR_plot_results(PlotsExtDummy(), method, results, grid, analysis_name = analysis_name, posterior_threshold = posterior_threshold, volume_scaling = volume_scaling, exports = exports)
+    
+    if !disable_plotting
+        FUBAR_plot_results(PlotsExtDummy(), method, results, grid, analysis_name = analysis_name, posterior_threshold = posterior_threshold, volume_scaling = volume_scaling, exports = exports)
+    end
+    
     return analysis, posterior_suppression
 end
 
