@@ -23,6 +23,7 @@ include("FUBAR/grid_utilities.jl")
 include("simulations/coalescence_scenarios.jl")
 include("simulations/alignment_simulations.jl")
 include("simulations/simulation_management.jl")
+
 export 
     difFUBARBaseline,
     difFUBARParallel,
@@ -52,7 +53,15 @@ export
     simulate_alignment,
     simulate_k_diversifying_sites,
     save_simulation_data,
-    # Coalescence scenarios
+    SimulationResult,
+    compute_total_diversity,
+    RateSampler,
+    UnivariateRateSampler,
+    BivariateRateSampler,
+    AllSitesSampler,
+    DiversifyingSitesSampler,
+    serialize_sampler_to_dict,
+    save_sampler_metadata,
     CoalescenceScenario,
     HIVScenario,
     InfluenzaScenario,
@@ -63,5 +72,7 @@ export
     effective_population_size,
     sampling_rate, 
     load_scenario,
-    run_simulation_batch
+    run_simulation_batch,
+    parse_simulation_parameters,
+    create_rate_sampler_from_row
 end
