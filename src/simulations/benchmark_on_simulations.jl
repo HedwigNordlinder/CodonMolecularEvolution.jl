@@ -220,3 +220,9 @@ function run_single_fubar_analysis(method::FUBARMethod, grid::FUBARGrid, results
         verbosity=verbosity-1,
         disable_plotting=true)
 end
+
+# Dummy function for plot_combined_roc_curves (will be overridden by PlotsExt)
+function plot_combined_roc_curves(all_roc_data::Dict{String, Dict{String, Any}}, output_filename::String)
+    println("plot_combined_roc_curves not available without PlotsExt")
+    return nothing
+end

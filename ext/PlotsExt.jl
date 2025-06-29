@@ -8,6 +8,8 @@ using Phylo
 using DataFrames
 using CSV
 using Suppressor
+using Statistics
+using Base.Threads
 
 const Dummy = CodonMolecularEvolution.PlotsExtDummy
 
@@ -484,6 +486,372 @@ function CodonMolecularEvolution.save_tree_report(result::CodonMolecularEvolutio
     
     println("Tree report saved to: ", output_filename)
     return output_filename
+end
+
+"""
+    generate_roc_curves(input_directory::String; 
+                       results_subfolder::String="results",
+                       verbosity::Int=1,
+                       nthreads::Union{Int,Nothing}=nothing,
+                       output_filename::String="roc_curves")
+
+Generate ROC curves by comparing ground truth from scenario files with FUBAR analysis results.
+
+# Arguments
+- `input_directory::String`: Path to the directory containing subdirectories with simulation data
+- `results_subfolder::String="results"`: Name of subfolder containing FUBAR results
+- `verbosity::Int=1`: Control level of output messages
+- `nthreads::Union{Int,Nothing}=nothing`: Number of threads to use (default: all available)
+- `output_filename::String="roc_curves"`: Base filename for output plots
+
+# Description
+This function:
+1. Scans the input directory for subdirectories
+2. For each subdirectory, reads the ground truth from the scenario CSV file
+3. Reads FUBAR results from the results subfolder
+4. Computes ROC curves for positive selection detection
+5. Saves combined ROC plot and individual method plots
+
+# Returns
+- `Dict{String, Dict{String, Any}}`: Nested dictionary with ROC data for each directory and method
+"""
+function generate_roc_curves(input_directory::String; 
+                           results_subfolder::String="results",
+                           verbosity::Int=1,
+                           nthreads::Union{Int,Nothing}=nothing,
+                           output_filename::String="roc_curves")
+    
+    if !isdir(input_directory)
+        error("Input directory does not exist: $input_directory")
+    end
+    
+    # Set number of threads
+    if isnothing(nthreads)
+        nthreads = Threads.nthreads()
+    end
+    
+    if verbosity > 0
+        println("Using $nthreads threads for parallel processing")
+    end
+    
+    # Get all subdirectories
+    subdirs = [d for d in readdir(input_directory, join=true) if isdir(d)]
+    
+    if isempty(subdirs)
+        error("No subdirectories found in $input_directory")
+    end
+    
+    if verbosity > 0
+        println("Found $(length(subdirs)) subdirectories to process")
+    end
+    
+    # Prepare work items for parallel processing
+    work_items = []
+    for subdir in subdirs
+        dirname = basename(subdir)
+        
+        # Find scenario CSV file (contains ground truth)
+        scenario_files = filter(f -> endswith(f, "_rates.csv"), readdir(subdir, join=true))
+        
+        if isempty(scenario_files)
+            if verbosity > 0
+                println("  No scenario files found in $dirname")
+            end
+            continue
+        end
+        
+        # Find results directory
+        results_dir = joinpath(subdir, results_subfolder)
+        if !isdir(results_dir)
+            if verbosity > 0
+                println("  No results directory found in $dirname")
+            end
+            continue
+        end
+        
+        # Find FUBAR result files
+        fubar_files = filter(f -> endswith(f, "_results.csv"), readdir(results_dir, join=true))
+        
+        if isempty(fubar_files)
+            if verbosity > 0
+                println("  No FUBAR result files found in $dirname")
+            end
+            continue
+        end
+        
+        scenario_file = scenario_files[1]
+        push!(work_items, (dirname, subdir, scenario_file, results_dir, fubar_files))
+    end
+    
+    if isempty(work_items)
+        error("No valid work items found")
+    end
+    
+    # Process directories in parallel (data collection only)
+    all_roc_data = Dict{String, Dict{String, Any}}()
+    
+    if nthreads == 1 || length(work_items) == 1
+        # Sequential processing
+        for (dirname, subdir, scenario_file, results_dir, fubar_files) in work_items
+            if verbosity > 0
+                println("\nProcessing directory: $dirname")
+            end
+            
+            dir_roc_data = process_single_directory_roc(dirname, subdir, scenario_file, results_dir, fubar_files, verbosity)
+            all_roc_data[dirname] = dir_roc_data
+        end
+    else
+        # Parallel processing for data collection only
+        results_lock = ReentrantLock()
+        
+        Threads.@threads for (dirname, subdir, scenario_file, results_dir, fubar_files) in work_items
+            if verbosity > 0
+                lock(results_lock) do
+                    println("\nProcessing directory: $dirname (Thread $(Threads.threadid()))")
+                end
+            end
+            
+            dir_roc_data = process_single_directory_roc(dirname, subdir, scenario_file, results_dir, fubar_files, verbosity)
+            
+            lock(results_lock) do
+                all_roc_data[dirname] = dir_roc_data
+            end
+        end
+    end
+    
+    # Generate combined ROC plot (single-threaded)
+    if verbosity > 0
+        println("\nGenerating combined ROC plot...")
+    end
+    
+    combined_plot = CodonMolecularEvolution.plot_combined_roc_curves(all_roc_data, output_filename)
+    
+    if verbosity > 0
+        println("ROC analysis completed!")
+        println("Results saved as: $(output_filename)_combined.pdf")
+    end
+    
+    return all_roc_data, combined_plot
+end
+
+"""
+    process_single_directory_roc(dirname::String, subdir::String, scenario_file::String, 
+                                results_dir::String, fubar_files::Vector{String}, verbosity::Int)
+
+Process a single directory to extract ROC data. This function is designed to be thread-safe.
+"""
+function process_single_directory_roc(dirname::String, subdir::String, scenario_file::String, 
+                                    results_dir::String, fubar_files::Vector{String}, verbosity::Int)
+    
+    try
+        # Read ground truth from scenario file
+        scenario_df = CSV.read(scenario_file, DataFrame)
+        
+        # Extract ground truth for diversifying selection (beta > alpha)
+        ground_truth = scenario_df.diversifying_ground_truth
+        
+        if verbosity > 0
+            num_positive = sum(ground_truth)
+            println("  Found $num_positive diversifying sites out of $(length(ground_truth)) total sites")
+        end
+        
+        dir_roc_data = Dict{String, Any}()
+        
+        # Process each FUBAR result file
+        for fubar_file in fubar_files
+            method_name = basename(fubar_file)
+            method_name = replace(method_name, "_results.csv" => "")
+            
+            if verbosity > 0
+                println("  Processing $method_name...")
+            end
+            
+            try
+                # Read FUBAR results
+                fubar_df = CSV.read(fubar_file, DataFrame)
+                
+                # Extract positive selection posteriors
+                positive_posteriors = fubar_df.positive_posterior
+                
+                # Compute ROC curve
+                roc_data = compute_roc_curve(ground_truth, positive_posteriors)
+                
+                dir_roc_data[method_name] = roc_data
+                
+                if verbosity > 0
+                    auc = compute_auc(roc_data.fpr, roc_data.tpr)
+                    println("    ✓ AUC: $(round(auc, digits=4))")
+                end
+                
+            catch e
+                if verbosity > 0
+                    println("    ✗ Failed: $(e)")
+                end
+                dir_roc_data[method_name] = (error=e,)
+            end
+        end
+        
+        return dir_roc_data
+        
+    catch e
+        if verbosity > 0
+            println("  ✗ Failed to process directory: $(e)")
+        end
+        return Dict{String, Any}("error" => e)
+    end
+end
+
+"""
+    compute_roc_curve(ground_truth::Vector{Bool}, predictions::Vector{Float64})
+
+Compute ROC curve data from ground truth and prediction scores.
+
+# Returns
+- Named tuple with (fpr, tpr, thresholds) where fpr and tpr are vectors of false positive and true positive rates
+"""
+function compute_roc_curve(ground_truth::Vector{Bool}, predictions::Vector{Float64})
+    # Sort predictions in descending order
+    sorted_indices = sortperm(predictions, rev=true)
+    sorted_predictions = predictions[sorted_indices]
+    sorted_ground_truth = ground_truth[sorted_indices]
+    
+    # Count positive and negative samples
+    n_positive = sum(ground_truth)
+    n_negative = sum(.!ground_truth)
+    
+    if n_positive == 0 || n_negative == 0
+        # Edge case: no positive or negative samples
+        return (fpr=[0.0, 1.0], tpr=[0.0, 1.0], thresholds=[1.0, 0.0])
+    end
+    
+    # Initialize arrays
+    fpr = Float64[]
+    tpr = Float64[]
+    thresholds = Float64[]
+    
+    # Add starting point (0, 0)
+    push!(fpr, 0.0)
+    push!(tpr, 0.0)
+    push!(thresholds, sorted_predictions[1] + 0.1)
+    
+    # Compute ROC points
+    tp = 0
+    fp = 0
+    
+    for i in 1:length(sorted_predictions)
+        if sorted_ground_truth[i]
+            tp += 1
+        else
+            fp += 1
+        end
+        
+        # Add point if threshold changes
+        if i == length(sorted_predictions) || sorted_predictions[i] != sorted_predictions[i+1]
+            push!(fpr, fp / n_negative)
+            push!(tpr, tp / n_positive)
+            push!(thresholds, sorted_predictions[i])
+        end
+    end
+    
+    # Add ending point (1, 1)
+    push!(fpr, 1.0)
+    push!(tpr, 1.0)
+    push!(thresholds, 0.0)
+    
+    return (fpr=fpr, tpr=tpr, thresholds=thresholds)
+end
+
+"""
+    compute_auc(fpr::Vector{Float64}, tpr::Vector{Float64})
+
+Compute Area Under the Curve (AUC) using trapezoidal rule.
+"""
+function compute_auc(fpr::Vector{Float64}, tpr::Vector{Float64})
+    auc = 0.0
+    for i in 2:length(fpr)
+        auc += (fpr[i] - fpr[i-1]) * (tpr[i] + tpr[i-1]) / 2
+    end
+    return auc
+end
+
+"""
+    CodonMolecularEvolution.plot_combined_roc_curves(all_roc_data::Dict{String, Dict{String, Any}}, output_filename::String)
+
+Create a combined ROC plot showing all methods across all directories.
+"""
+function CodonMolecularEvolution.plot_combined_roc_curves(all_roc_data::Dict{String, Dict{String, Any}}, output_filename::String)
+    
+    # Collect all methods
+    all_methods = Set{String}()
+    for (dirname, dir_data) in all_roc_data
+        for method_name in keys(dir_data)
+            if !haskey(dir_data[method_name], :error)
+                push!(all_methods, method_name)
+            end
+        end
+    end
+    
+    # Create color palette
+    colors = [:blue, :red, :green, :orange, :purple, :brown, :pink, :gray, :olive, :cyan]
+    
+    # Initialize plot
+    p = plot(
+        xlabel="False Positive Rate",
+        ylabel="True Positive Rate",
+        title="ROC Curves - All Methods",
+        legend=:bottomright,
+        grid=true,
+        size=(800, 600)
+    )
+    
+    # Add diagonal reference line
+    plot!([0, 1], [0, 1], 
+          line=:dash, color=:black, alpha=0.5, 
+          label="Random", linewidth=1)
+    
+    # Plot each method
+    method_colors = Dict{String, Symbol}()
+    color_idx = 1
+    
+    for method_name in sort(collect(all_methods))
+        color = colors[mod1(color_idx, length(colors))]
+        method_colors[method_name] = color
+        color_idx += 1
+        
+        # Collect all ROC curves for this method
+        all_fpr = Float64[]
+        all_tpr = Float64[]
+        all_aucs = Float64[]
+        
+        for (dirname, dir_data) in all_roc_data
+            if haskey(dir_data, method_name) && !haskey(dir_data[method_name], :error)
+                roc_data = dir_data[method_name]
+                append!(all_fpr, roc_data.fpr)
+                append!(all_tpr, roc_data.tpr)
+                push!(all_aucs, compute_auc(roc_data.fpr, roc_data.tpr))
+            end
+        end
+        
+        if !isempty(all_aucs)
+            # Plot mean ROC curve
+            mean_auc = mean(all_aucs)
+            std_auc = std(all_aucs)
+            
+            # Sort by FPR for smooth curve
+            sorted_indices = sortperm(all_fpr)
+            sorted_fpr = all_fpr[sorted_indices]
+            sorted_tpr = all_tpr[sorted_indices]
+            
+            plot!(sorted_fpr, sorted_tpr, 
+                  color=color, linewidth=2, alpha=0.7,
+                  label="$method_name (AUC: $(round(mean_auc, digits=3)) ± $(round(std_auc, digits=3)))")
+        end
+    end
+    
+    # Save plot
+    savefig(p, "$(output_filename)_combined.pdf")
+    
+    return p
 end
 
 end

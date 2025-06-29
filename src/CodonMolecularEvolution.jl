@@ -52,6 +52,8 @@ export
     FIFEFUBAR,
     FUBARGrid,
     run_fubar_benchmark,
+    generate_roc_curves,
+    plot_combined_roc_curves,
     simulate_alignment,
     simulate_k_diversifying_sites,
     save_simulation_data,
@@ -77,4 +79,5 @@ export
     run_simulation_batch,
     parse_simulation_parameters,
     create_rate_sampler_from_row
+
 end
