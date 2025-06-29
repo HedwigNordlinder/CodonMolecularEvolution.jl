@@ -15,11 +15,11 @@ end
 
 # Site selection samplers (handle which sites get which rates)
 struct AllSitesSampler <: RateSampler
-    base_sampler::RateSampler
+    base_sampler::Union{UnivariateRateSampler, BivariateRateSampler}
 end
 
 struct DiversifyingSitesSampler <: RateSampler
-    base_sampler::RateSampler
+    base_sampler::Union{UnivariateRateSampler, BivariateRateSampler}
     diversifying_sites::Int
     total_sites::Int
 end
