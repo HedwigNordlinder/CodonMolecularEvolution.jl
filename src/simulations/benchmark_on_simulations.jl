@@ -141,12 +141,21 @@ function process_single_directory(dirname::String, subdir::String, fasta_file::S
                                 methods::Vector{<:FUBARMethod}, results_subfolder::String, verbosity::Int)
     
     try
-        # Read alignment data
-        seqs = read(fasta_file, FASTAReader)
+        # Read alignment data with proper file handling
+        seqs = nothing
+        seqnames = nothing
+        sequences = nothing
+        
+        # Use a separate scope for file reading to ensure proper cleanup
+        open(fasta_file, "r") do io
+            seqs = collect(FASTAReader(io))
+        end
+        
         seqnames = [identifier(seq) for seq in seqs]
         sequences = [sequence(seq) for seq in seqs]
         
         # Read tree if available, otherwise use default
+        treestring = nothing
         if !isnothing(tre_file)
             treestring = read(tre_file, String)
         else
