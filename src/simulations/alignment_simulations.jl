@@ -236,14 +236,23 @@ function serialize_sampler_to_dict(sampler::BivariateRateSampler)
     return metadata
 end
 
+# Helper function to serialize base sampler
+function serialize_base_sampler(sampler::UnivariateRateSampler)
+    return serialize_sampler_to_dict(sampler)
+end
+
+function serialize_base_sampler(sampler::BivariateRateSampler)
+    return serialize_sampler_to_dict(sampler)
+end
+
 function serialize_sampler_to_dict(sampler::DiversifyingSitesSampler)
     metadata = Dict{String, Any}()
     metadata["sampler_type"] = string(typeof(sampler))
     metadata["diversifying_sites"] = sampler.diversifying_sites
     metadata["total_sites"] = sampler.total_sites
     
-    # Recursively serialize base sampler
-    base_metadata = serialize_sampler_to_dict(sampler.base_sampler)
+    # Serialize base sampler using multiple dispatch
+    base_metadata = serialize_base_sampler(sampler.base_sampler)
     for (key, value) in base_metadata
         metadata["base_$(key)"] = value
     end
@@ -255,8 +264,8 @@ function serialize_sampler_to_dict(sampler::AllSitesSampler)
     metadata = Dict{String, Any}()
     metadata["sampler_type"] = string(typeof(sampler))
     
-    # Recursively serialize base sampler
-    base_metadata = serialize_sampler_to_dict(sampler.base_sampler)
+    # Serialize base sampler using multiple dispatch
+    base_metadata = serialize_base_sampler(sampler.base_sampler)
     for (key, value) in base_metadata
         metadata["base_$(key)"] = value
     end
