@@ -492,8 +492,7 @@ end
     CodonMolecularEvolution.generate_roc_curves(input_directory::String; 
                        results_subfolder::String="results",
                        verbosity::Int=1,
-                       nthreads::Union{Int,Nothing}=nothing,
-                       output_filename::String="roc_curves")
+                       nthreads::Union{Int,Nothing}=nothing)
 
 Generate ROC curves by comparing ground truth from scenario files with FUBAR analysis results.
 
@@ -502,7 +501,6 @@ Generate ROC curves by comparing ground truth from scenario files with FUBAR ana
 - `results_subfolder::String="results"`: Name of subfolder containing FUBAR results
 - `verbosity::Int=1`: Control level of output messages
 - `nthreads::Union{Int,Nothing}=nothing`: Number of threads to use (default: all available)
-- `output_filename::String="roc_curves"`: Base filename for output plots
 
 # Description
 This function:
@@ -510,7 +508,7 @@ This function:
 2. For each subdirectory, reads the ground truth from the scenario CSV file
 3. Reads FUBAR results from the results subfolder
 4. Computes ROC curves for positive selection detection
-5. Saves combined ROC plot and individual method plots
+5. Saves individual ROC plots in each directory
 
 # Returns
 - `Dict{String, Dict{String, Any}}`: Nested dictionary with ROC data for each directory and method
@@ -518,8 +516,7 @@ This function:
 function CodonMolecularEvolution.generate_roc_curves(input_directory::String; 
                            results_subfolder::String="results",
                            verbosity::Int=1,
-                           nthreads::Union{Int,Nothing}=nothing,
-                           output_filename::String="roc_curves")
+                           nthreads::Union{Int,Nothing}=nothing)
     
     if !isdir(input_directory)
         error("Input directory does not exist: $input_directory")
@@ -597,7 +594,7 @@ function CodonMolecularEvolution.generate_roc_curves(input_directory::String;
                 println("\nProcessing directory: $dirname")
             end
             
-            dir_roc_data = process_single_directory_roc(dirname, subdir, scenario_file, results_dir, fubar_files, verbosity)
+            dir_roc_data = process_single_directory_roc_data(dirname, subdir, scenario_file, results_dir, fubar_files, verbosity)
             all_roc_data[dirname] = dir_roc_data
         end
     else
@@ -611,7 +608,7 @@ function CodonMolecularEvolution.generate_roc_curves(input_directory::String;
                 end
             end
             
-            dir_roc_data = process_single_directory_roc(dirname, subdir, scenario_file, results_dir, fubar_files, verbosity)
+            dir_roc_data = process_single_directory_roc_data(dirname, subdir, scenario_file, results_dir, fubar_files, verbosity)
             
             lock(results_lock) do
                 all_roc_data[dirname] = dir_roc_data
@@ -619,29 +616,33 @@ function CodonMolecularEvolution.generate_roc_curves(input_directory::String;
         end
     end
     
-    # Generate combined ROC plot (single-threaded)
+    # Generate plots single-threaded (Plots.jl is not thread-safe)
     if verbosity > 0
-        println("\nGenerating combined ROC plot...")
+        println("\nGenerating plots (single-threaded)...")
     end
     
-    combined_plot = plot_combined_roc_curves(all_roc_data, output_filename)
+    for (dirname, subdir, scenario_file, results_dir, fubar_files) in work_items
+        if haskey(all_roc_data, dirname) && !isempty(all_roc_data[dirname]) && !all(haskey(data, :error) for data in values(all_roc_data[dirname]))
+            plot_single_directory_roc(dirname, subdir, all_roc_data[dirname], verbosity)
+        end
+    end
     
     if verbosity > 0
         println("ROC analysis completed!")
-        println("Results saved as: $(output_filename)_combined.pdf")
+        println("Individual plots saved in each directory")
     end
     
-    return all_roc_data, combined_plot
+    return all_roc_data
 end
 
 """
-    process_single_directory_roc(dirname::String, subdir::String, scenario_file::String, 
-                                results_dir::String, fubar_files::Vector{String}, verbosity::Int)
+    process_single_directory_roc_data(dirname::String, subdir::String, scenario_file::String, 
+                                     results_dir::String, fubar_files::Vector{String}, verbosity::Int)
 
-Process a single directory to extract ROC data. This function is designed to be thread-safe.
+Process a single directory to extract ROC data. This function is designed to be thread-safe and does NOT create plots.
 """
-function process_single_directory_roc(dirname::String, subdir::String, scenario_file::String, 
-                                    results_dir::String, fubar_files::Vector{String}, verbosity::Int)
+function process_single_directory_roc_data(dirname::String, subdir::String, scenario_file::String, 
+                                         results_dir::String, fubar_files::Vector{String}, verbosity::Int)
     
     try
         # Read ground truth from scenario file
@@ -699,6 +700,58 @@ function process_single_directory_roc(dirname::String, subdir::String, scenario_
         end
         return Dict{String, Any}("error" => e)
     end
+end
+
+"""
+    plot_single_directory_roc(dirname::String, subdir::String, dir_roc_data::Dict{String, Any}, verbosity::Int)
+
+Create and save a ROC plot for a single directory showing all methods.
+"""
+function plot_single_directory_roc(dirname::String, subdir::String, dir_roc_data::Dict{String, Any}, verbosity::Int)
+    
+    # Create color palette
+    colors = [:blue, :red, :green, :orange, :purple, :brown, :pink, :gray, :olive, :cyan]
+    
+    # Initialize plot
+    p = plot(
+        xlabel="False Positive Rate",
+        ylabel="True Positive Rate",
+        title="ROC Curves - $dirname",
+        legend=:bottomright,
+        grid=true,
+        size=(800, 600)
+    )
+    
+    # Add diagonal reference line
+    plot!([0, 1], [0, 1], 
+          line=:dash, color=:black, alpha=0.5, 
+          label="Random", linewidth=1)
+    
+    # Plot each method
+    color_idx = 1
+    
+    for (method_name, roc_data) in dir_roc_data
+        if !haskey(roc_data, :error)
+            color = colors[mod1(color_idx, length(colors))]
+            color_idx += 1
+            
+            auc = compute_auc(roc_data.fpr, roc_data.tpr)
+            
+            plot!(roc_data.fpr, roc_data.tpr, 
+                  color=color, linewidth=2, alpha=0.7,
+                  label="$method_name (AUC: $(round(auc, digits=3)))")
+        end
+    end
+    
+    # Save plot in the directory
+    plot_filename = joinpath(subdir, "roc_curves.pdf")
+    savefig(p, plot_filename)
+    
+    if verbosity > 0
+        println("  Saved ROC plot: $plot_filename")
+    end
+    
+    return p
 end
 
 """
@@ -772,86 +825,6 @@ function compute_auc(fpr::Vector{Float64}, tpr::Vector{Float64})
         auc += (fpr[i] - fpr[i-1]) * (tpr[i] + tpr[i-1]) / 2
     end
     return auc
-end
-
-"""
-    plot_combined_roc_curves(all_roc_data::Dict{String, Dict{String, Any}}, output_filename::String)
-
-Create a combined ROC plot showing all methods across all directories.
-"""
-function plot_combined_roc_curves(all_roc_data::Dict{String, Dict{String, Any}}, output_filename::String)
-    
-    # Collect all methods
-    all_methods = Set{String}()
-    for (dirname, dir_data) in all_roc_data
-        for method_name in keys(dir_data)
-            if !haskey(dir_data[method_name], :error)
-                push!(all_methods, method_name)
-            end
-        end
-    end
-    
-    # Create color palette
-    colors = [:blue, :red, :green, :orange, :purple, :brown, :pink, :gray, :olive, :cyan]
-    
-    # Initialize plot
-    p = plot(
-        xlabel="False Positive Rate",
-        ylabel="True Positive Rate",
-        title="ROC Curves - All Methods",
-        legend=:bottomright,
-        grid=true,
-        size=(800, 600)
-    )
-    
-    # Add diagonal reference line
-    plot!([0, 1], [0, 1], 
-          line=:dash, color=:black, alpha=0.5, 
-          label="Random", linewidth=1)
-    
-    # Plot each method
-    method_colors = Dict{String, Symbol}()
-    color_idx = 1
-    
-    for method_name in sort(collect(all_methods))
-        color = colors[mod1(color_idx, length(colors))]
-        method_colors[method_name] = color
-        color_idx += 1
-        
-        # Collect all ROC curves for this method
-        all_fpr = Float64[]
-        all_tpr = Float64[]
-        all_aucs = Float64[]
-        
-        for (dirname, dir_data) in all_roc_data
-            if haskey(dir_data, method_name) && !haskey(dir_data[method_name], :error)
-                roc_data = dir_data[method_name]
-                append!(all_fpr, roc_data.fpr)
-                append!(all_tpr, roc_data.tpr)
-                push!(all_aucs, compute_auc(roc_data.fpr, roc_data.tpr))
-            end
-        end
-        
-        if !isempty(all_aucs)
-            # Plot mean ROC curve
-            mean_auc = mean(all_aucs)
-            std_auc = std(all_aucs)
-            
-            # Sort by FPR for smooth curve
-            sorted_indices = sortperm(all_fpr)
-            sorted_fpr = all_fpr[sorted_indices]
-            sorted_tpr = all_tpr[sorted_indices]
-            
-            plot!(sorted_fpr, sorted_tpr, 
-                  color=color, linewidth=2, alpha=0.7,
-                  label="$method_name (AUC: $(round(mean_auc, digits=3)) ± $(round(std_auc, digits=3)))")
-        end
-    end
-    
-    # Save plot
-    savefig(p, "$(output_filename)_combined.pdf")
-    
-    return p
 end
 
 end
