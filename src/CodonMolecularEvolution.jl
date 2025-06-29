@@ -5,7 +5,7 @@ using NNlib, Distributions,SimpleUnPack, AbstractMCMC, Interpolations, MCMCChain
 using PDMats, BenchmarkTools
 using EllipticalSliceSampling
 using KrylovKit
-using JSON3
+using JSON
 abstract type difFUBARGrid end
 struct PlotsExtDummy end
 

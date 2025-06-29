@@ -210,7 +210,7 @@ function save_sampler_metadata(sampler::RateSampler, filename::String)
     # Save to JSON file
     if !isempty(filename)
         open(filename, "w") do f
-            JSON.print(f, metadata, 2)
+            JSON3.write(f, metadata)
         end
     end
     
