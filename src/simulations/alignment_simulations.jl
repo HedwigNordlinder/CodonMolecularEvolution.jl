@@ -58,6 +58,16 @@ function Base.rand(sampler::AllSitesSampler, n::Int)
     return rand(sampler.base_sampler, n)
 end
 
+# Helper function to sample individual values for rejection sampling
+function sample_individual_values(sampler::UnivariateRateSampler)
+    return rand(sampler.alpha_dist), rand(sampler.beta_dist)
+end
+
+function sample_individual_values(sampler::BivariateRateSampler)
+    rates = rand(sampler.rate_dist)
+    return rates[1], rates[2]
+end
+
 function Base.rand(sampler::DiversifyingSitesSampler, n::Int)
     if n != sampler.total_sites
         error("DiversifyingSitesSampler expects exactly $(sampler.total_sites) sites")
@@ -74,38 +84,12 @@ function Base.rand(sampler::DiversifyingSitesSampler, n::Int)
         if i ∈ diversifying_indices
             # Ensure beta > alpha for diversifying sites
             while beta_vec[i] <= alpha_vec[i]
-                # Sample directly from the base distributions to avoid recursion
-                if sampler.base_sampler isa UnivariateRateSampler
-                    alpha_vec[i] = rand(sampler.base_sampler.alpha_dist)
-                    beta_vec[i] = rand(sampler.base_sampler.beta_dist)
-                elseif sampler.base_sampler isa BivariateRateSampler
-                    new_rates = rand(sampler.base_sampler.rate_dist)
-                    alpha_vec[i] = new_rates[1]
-                    beta_vec[i] = new_rates[2]
-                else
-                    # For other sampler types, sample individual values
-                    new_alpha, new_beta = rand(sampler.base_sampler, 1)
-                    alpha_vec[i] = new_alpha[1]
-                    beta_vec[i] = new_beta[1]
-                end
+                alpha_vec[i], beta_vec[i] = sample_individual_values(sampler.base_sampler)
             end
         else
             # Ensure alpha >= beta for non-diversifying sites
             while alpha_vec[i] < beta_vec[i]
-                # Sample directly from the base distributions to avoid recursion
-                if sampler.base_sampler isa UnivariateRateSampler
-                    alpha_vec[i] = rand(sampler.base_sampler.alpha_dist)
-                    beta_vec[i] = rand(sampler.base_sampler.beta_dist)
-                elseif sampler.base_sampler isa BivariateRateSampler
-                    new_rates = rand(sampler.base_sampler.rate_dist)
-                    alpha_vec[i] = new_rates[1]
-                    beta_vec[i] = new_rates[2]
-                else
-                    # For other sampler types, sample individual values
-                    new_alpha, new_beta = rand(sampler.base_sampler, 1)
-                    alpha_vec[i] = new_alpha[1]
-                    beta_vec[i] = new_beta[1]
-                end
+                alpha_vec[i], beta_vec[i] = sample_individual_values(sampler.base_sampler)
             end
         end
     end
