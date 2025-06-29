@@ -1,66 +1,123 @@
-# Enhanced SimulationResult to optionally store the scenario and allow grid to be nothing
+# Enhanced SimulationResult to store sampler metadata
 struct SimulationResult 
-    grid::Union{FUBARGrid, Nothing}  # Allow grid to be nothing
+    grid::Union{FUBARGrid, Nothing}
     tree
     nucs
     nuc_names
     alphavec
     betavec
-    scenario::Union{CoalescenceScenario, Nothing}  # Optional scenario storage
+    scenario::Union{CoalescenceScenario, Nothing}
+    rate_sampler::Union{RateSampler, Nothing}
 end
 
-function total_branch_length(tree::FelNode) return sum([n.branchlength for n in getnodelist(tree)]) end
-
-# Constructor that defaults grid to nothing when not provided
-SimulationResult(grid, tree, nucs, nuc_names, alphavec, betavec) = 
-    SimulationResult(grid, tree, nucs, nuc_names, alphavec, betavec, nothing)
-
-# Add new methods that dispatch on CoalescenceScenario
-function simulate_alignment(ntaxa, scenario::CoalescenceScenario, alphavec::Vector{Float64}, betavec::Vector{Float64}, nucleotide_matrix::Array{Float64,2}, f3x4_matrix::Array{Float64,2}; target_normalisation=1.0, create_grid=false)
-    # Create wrapper functions that capture the scenario
-    Ne_func(t) = effective_population_size(scenario, t)
-    sample_rate_func(t) = sampling_rate(scenario, t)
-    
-    return simulate_alignment(ntaxa, Ne_func, sample_rate_func, alphavec, betavec, nucleotide_matrix, f3x4_matrix; target_normalisation=target_normalisation, create_grid=create_grid)
+function total_branch_length(tree::FelNode) 
+    return sum([n.branchlength for n in getnodelist(tree)]) 
 end
 
-function simulate_alignment(ntaxa, scenario::CoalescenceScenario, alpha_distribution::Distribution, beta_distribution::Distribution, nsites, nucleotide_matrix::Array{Float64,2}, f3x4_matrix::Array{Float64,2}; target_normalisation=1.0, create_grid=false)
-    alphavec = rand(alpha_distribution, nsites)
-    betavec = rand(beta_distribution, nsites)
-    return simulate_alignment(ntaxa, scenario, alphavec, betavec, nucleotide_matrix, f3x4_matrix; target_normalisation=target_normalisation, create_grid=create_grid)
+# Abstract type for rate sampling strategies
+abstract type RateSampler <: Sampleable{Univariate, Continuous} end
+
+# Base rate samplers (just handle alpha/beta sampling)
+struct UnivariateRateSampler <: RateSampler
+    alpha_dist::Distribution
+    beta_dist::Distribution
 end
 
-function simulate_alignment(ntaxa, scenario::CoalescenceScenario, rate_distribution::Distribution, nsites, nucleotide_matrix, f3x4_matrix; target_normalisation=1.0, create_grid=false)
-    if length(rate_distribution) != 2
+struct BivariateRateSampler <: RateSampler
+    rate_dist::Distribution  # Must be bivariate
+end
+
+# Site selection samplers (handle which sites get which rates)
+struct AllSitesSampler <: RateSampler
+    base_sampler::RateSampler
+end
+
+struct DiversifyingSitesSampler <: RateSampler
+    base_sampler::RateSampler
+    diversifying_sites::Int
+    total_sites::Int
+end
+
+# Required methods for Sampleable interface
+function Base.rand(sampler::UnivariateRateSampler, n::Int)
+    alpha_vec = rand(sampler.alpha_dist, n)
+    beta_vec = rand(sampler.beta_dist, n)
+    return (alpha_vec, beta_vec)
+end
+
+function Base.rand(sampler::BivariateRateSampler, n::Int)
+    if length(sampler.rate_dist) != 2
         error("Rate distribution must be bivariate")
     end
-    rates = rand(rate_distribution, nsites)
-    alphavec = rates[1, :]
-    betavec = rates[2, :]
-    return simulate_alignment(ntaxa, scenario, alphavec, betavec, nucleotide_matrix, f3x4_matrix; target_normalisation=target_normalisation, create_grid=create_grid)
+    rates = rand(sampler.rate_dist, n)
+    return (rates[1, :], rates[2, :])
 end
 
-function simulate_k_diversifying_sites(ntaxa, scenario::CoalescenceScenario, α_distribution::Distribution, β_distribution::Distribution, nsites, diversifying_sites, nucleotide_matrix::Array{Float64,2}, f3x4_matrix::Array{Float64,2}; target_normalisation=1.0, create_grid=false)
-    diversifying_indices = shuffle(1:nsites)[1:diversifying_sites]
-    α_vector = Vector{Float64}()
-    β_vector = Vector{Float64}()
-    
-    for i in 1:nsites
-        α = 0
-        β = 0
-        if i ∈ diversifying_indices
-            α, β = rejection_sample(α_distribution, β_distribution, (a,b) -> b > a)
-        else 
-            α, β = rejection_sample(α_distribution, β_distribution, (a,b) -> a > b)
-        end
-        push!(α_vector, α)
-        push!(β_vector, β)
+function Base.rand(sampler::AllSitesSampler, n::Int)
+    return rand(sampler.base_sampler, n)
+end
+
+function Base.rand(sampler::DiversifyingSitesSampler, n::Int)
+    if n != sampler.total_sites
+        error("DiversifyingSitesSampler expects exactly $(sampler.total_sites) sites")
     end
     
-    return simulate_alignment(ntaxa, scenario, α_vector, β_vector, nucleotide_matrix, f3x4_matrix; target_normalisation=target_normalisation, create_grid=create_grid)
+    # Get base rates from the underlying sampler
+    alpha_vec, beta_vec = rand(sampler.base_sampler, n)
+    
+    # Select which sites should be diversifying
+    diversifying_indices = shuffle(1:n)[1:sampler.diversifying_sites]
+    
+    # Apply rejection sampling to ensure correct relationships
+    for i in 1:n
+        if i ∈ diversifying_indices
+            # Ensure beta > alpha for diversifying sites
+            while beta_vec[i] <= alpha_vec[i]
+                new_alpha, new_beta = rand(sampler.base_sampler, 1)
+                alpha_vec[i] = new_alpha[1]
+                beta_vec[i] = new_beta[1]
+            end
+        else
+            # Ensure alpha >= beta for non-diversifying sites
+            while alpha_vec[i] < beta_vec[i]
+                new_alpha, new_beta = rand(sampler.base_sampler, 1)
+                alpha_vec[i] = new_alpha[1]
+                beta_vec[i] = new_beta[1]
+            end
+        end
+    end
+    
+    return (alpha_vec, beta_vec)
 end
 
-function simulate_alignment(ntaxa, scenario::CoalescenceScenario, alphavec::Vector{Float64}, betavec::Vector{Float64}, nucleotide_matrix::Array{Float64,2}, f3x4_matrix::Array{Float64,2}; target_normalisation=1.0, create_grid=false)
+# Constructor functions for convenience
+function UnivariateRateSampler(alpha_dist::Distribution, beta_dist::Distribution)
+    return UnivariateRateSampler(alpha_dist, beta_dist)
+end
+
+function BivariateRateSampler(rate_dist::Distribution)
+    if length(rate_dist) != 2
+        error("Rate distribution must be bivariate")
+    end
+    return BivariateRateSampler(rate_dist)
+end
+
+function AllSitesSampler(base_sampler::RateSampler)
+    return AllSitesSampler(base_sampler)
+end
+
+function DiversifyingSitesSampler(base_sampler::RateSampler, diversifying_sites::Int, total_sites::Int)
+    if diversifying_sites > total_sites
+        error("Number of diversifying sites cannot exceed total sites")
+    end
+    return DiversifyingSitesSampler(base_sampler, diversifying_sites, total_sites)
+end
+
+# Single unified simulation method
+function simulate_alignment(ntaxa, scenario::CoalescenceScenario, rate_sampler::RateSampler, nsites, nucleotide_matrix::Array{Float64,2}, f3x4_matrix::Array{Float64,2}; target_normalisation=1.0, create_grid=false)
+    alphavec, betavec = rand(rate_sampler, nsites)
+    
+    # Create wrapper functions that capture the scenario
     Ne_func(t) = effective_population_size(scenario, t)
     sample_rate_func(t) = sampling_rate(scenario, t)
     
@@ -75,11 +132,12 @@ function simulate_alignment(ntaxa, scenario::CoalescenceScenario, alphavec::Vect
     # Conditionally create grid
     grid = create_grid ? alphabetagrid(nuc_names, nucs, newick_tre) : nothing
     
-    result = SimulationResult(grid, tre, nucs, nuc_names, alphavec, betavec, scenario)
-    return result
+    return SimulationResult(grid, tre, nucs, nuc_names, alphavec, betavec, scenario, rate_sampler)
 end
 
-function simulate_alignment(ntaxa, Ne, sample_rate, alphavec::Vector{Float64}, betavec::Vector{Float64}, nucleotide_matrix::Array{Float64,2}, f3x4_matrix::Array{Float64,2}; target_normalisation=1.0, create_grid=false)
+function simulate_alignment(ntaxa, Ne, sample_rate, rate_sampler::RateSampler, nsites, nucleotide_matrix::Array{Float64,2}, f3x4_matrix::Array{Float64,2}; target_normalisation=1.0, create_grid=false)
+    alphavec, betavec = rand(rate_sampler, nsites)
+    
     tree = sim_tree(ntaxa, Ne, sample_rate)
     total_branch_length = sum([n.branchlength for n in getnodelist(tree)])
     for n in getnodelist(tree)
@@ -91,52 +149,7 @@ function simulate_alignment(ntaxa, Ne, sample_rate, alphavec::Vector{Float64}, b
     # Conditionally create grid
     grid = create_grid ? alphabetagrid(nuc_names, nucs, newick_tre) : nothing
 
-    result = SimulationResult(grid, tre, nucs, nuc_names, alphavec, betavec)
-    return result
-end
-
-function simulate_alignment(ntaxa, Ne, sample_rate, alpha_distribution::Distribution, beta_distribution::Distribution, nsites, nucleotide_matrix::Array{Float64,2}, f3x4_matrix::Array{Float64,2}; target_normalisation=1.0, create_grid=false)
-    alphavec = rand(alpha_distribution, nsites)
-    betavec = rand(beta_distribution, nsites)
-    return simulate_alignment(ntaxa, Ne, sample_rate, alphavec, betavec, nucleotide_matrix, f3x4_matrix; target_normalisation=target_normalisation, create_grid=create_grid)
-end
-
-function simulate_alignment(ntaxa, Ne, sample_rate, rate_distribution::Distribution, nsites, nucleotide_matrix, f3x4_matrix; target_normalisation=1.0, create_grid=false)
-    if length(rate_distribution) != 2
-        error("Rate distribution must be bivariate")
-    end
-    rates = rand(rate_distribution, nsites)
-    alphavec = rates[1, :]
-    betavec = rates[2, :]
-    return simulate_alignment(ntaxa, Ne, sample_rate, alphavec, betavec, nucleotide_matrix, f3x4_matrix; target_normalisation=target_normalisation, create_grid=create_grid)
-end
-
-function rejection_sample(distribution_a::Distribution, distribution_b::Distribution, condition)
-    a = rand(distribution_a)
-    b = rand(distribution_b)
-    while !condition(a,b)
-        a = rand(distribution_a)
-        b = rand(distribution_b) 
-    end
-    return a,b
-end
-
-function simulate_k_diversifying_sites(ntaxa, Ne, sample_rate, α_distribution::Distribution, β_distribution::Distribution, nsites, diversifying_sites, nucleotide_matrix::Array{Float64,2}, f3x4_matrix::Array{Float64,2}; target_normalisation=1.0, create_grid=false)
-    diversifying_indices = shuffle(1:nsites)[1:diversifying_sites]
-    α_vector = Vector{Float64}()
-    β_vector = Vector{Float64}()
-    for i in 1:nsites
-        α = 0
-        β = 0
-        if i ∈ diversifying_indices
-            α, β = rejection_sample(α_distribution, β_distribution, (a,b) -> b > a)
-        else 
-            α, β = rejection_sample(α_distribution, β_distribution, (a,b) -> a > b)
-        end
-        push!(α_vector, α)
-        push!(β_vector, β)
-    end
-    return simulate_alignment(ntaxa, Ne, sample_rate, α_vector, β_vector, nucleotide_matrix, f3x4_matrix; target_normalisation=target_normalisation, create_grid=create_grid)
+    return SimulationResult(grid, tre, nucs, nuc_names, alphavec, betavec, nothing, rate_sampler)
 end
 
 function save_simulation_data(res::SimulationResult; name = "simulation_data")
@@ -151,13 +164,89 @@ function save_simulation_data(res::SimulationResult; name = "simulation_data")
 
     CSV.write(name*"_rates.csv", ground_truth_frame)
     if !isnothing(res.scenario) save_scenario(res.scenario, name*"_scenario.json") end
+    if !isnothing(res.rate_sampler) save_sampler_metadata(res.rate_sampler, name*"_sampler.json") end
 end
 
+# Function to save sampler metadata - handles file writing
+function save_sampler_metadata(sampler::RateSampler, filename::String)
+    metadata = serialize_sampler_to_dict(sampler)
+    
+    # Save to JSON file
+    if !isempty(filename)
+        open(filename, "w") do f
+            JSON.print(f, metadata, 2)
+        end
+    end
+    
+    return metadata
+end
 
+# Multiple dispatch for serialization only
+function serialize_sampler_to_dict(sampler::RateSampler)
+    return Dict{String, Any}("sampler_type" => string(typeof(sampler)))
+end
+
+function serialize_sampler_to_dict(sampler::UnivariateRateSampler)
+    metadata = Dict{String, Any}()
+    metadata["sampler_type"] = string(typeof(sampler))
+    metadata["alpha_distribution"] = string(typeof(sampler.alpha_dist))
+    metadata["beta_distribution"] = string(typeof(sampler.beta_dist))
+    
+    try
+        metadata["alpha_params"] = params(sampler.alpha_dist)
+        metadata["beta_params"] = params(sampler.beta_dist)
+    catch
+        metadata["alpha_params"] = "unknown"
+        metadata["beta_params"] = "unknown"
+    end
+    
+    return metadata
+end
+
+function serialize_sampler_to_dict(sampler::BivariateRateSampler)
+    metadata = Dict{String, Any}()
+    metadata["sampler_type"] = string(typeof(sampler))
+    metadata["rate_distribution"] = string(typeof(sampler.rate_dist))
+    
+    try
+        metadata["rate_params"] = params(sampler.rate_dist)
+    catch
+        metadata["rate_params"] = "unknown"
+    end
+    
+    return metadata
+end
+
+function serialize_sampler_to_dict(sampler::DiversifyingSitesSampler)
+    metadata = Dict{String, Any}()
+    metadata["sampler_type"] = string(typeof(sampler))
+    metadata["diversifying_sites"] = sampler.diversifying_sites
+    metadata["total_sites"] = sampler.total_sites
+    
+    # Recursively serialize base sampler
+    base_metadata = serialize_sampler_to_dict(sampler.base_sampler)
+    for (key, value) in base_metadata
+        metadata["base_$(key)"] = value
+    end
+    
+    return metadata
+end
+
+function serialize_sampler_to_dict(sampler::AllSitesSampler)
+    metadata = Dict{String, Any}()
+    metadata["sampler_type"] = string(typeof(sampler))
+    
+    # Recursively serialize base sampler
+    base_metadata = serialize_sampler_to_dict(sampler.base_sampler)
+    for (key, value) in base_metadata
+        metadata["base_$(key)"] = value
+    end
+    
+    return metadata
+end
 
 # Function that computes the total number of expected substitutions under the codon model
-# This function should take in the codon model and branch length, assume the substitution process starts at stationarity etc
-function compute_total_diversity(res::SimulationResult;nucleotide_matrix = CodonMolecularEvolution.demo_nucmat, f3x4_matrix = CodonMolecularEvolution.demo_f3x4)
+function compute_total_diversity(res::SimulationResult; nucleotide_matrix = CodonMolecularEvolution.demo_nucmat, f3x4_matrix = CodonMolecularEvolution.demo_f3x4)
     π_eq = MolecularEvolution.F3x4_eq_freqs(f3x4_matrix)
     Q = MolecularEvolution.MG94_F3x4(1.0,1.0,nucleotide_matrix, f3x4_matrix)
     total_substitution_rate = -sum(π_eq .* diag(Q))

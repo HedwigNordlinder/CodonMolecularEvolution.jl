@@ -102,37 +102,34 @@ function parse_simulation_parameters(row)
     ntaxa = row.ntaxa
     nsites = row.nsites
     
-    # Convert string types to String and parse
-    alpha_dist = eval(Meta.parse(String(row.alpha_distribution)))
-    beta_dist = eval(Meta.parse(String(row.beta_distribution)))
+    # Parse scenario
     scenario = eval(Meta.parse(String(row.coalescence_scenario)))
     
-    # Convert to String before passing to get functions
+    # Get matrices
     nucleotide_matrix = get_nucleotide_matrix(String(row.nucleotide_model))
     f3x4_matrix = get_f3x4_matrix(String(row.f3x4_model))
     
-    diversifying_sites = get(row, :diversifying_sites, 0)
+    # Create rate sampler
+    rate_sampler = create_rate_sampler_from_row(row)
+    
     target_normalisation = get(row, :target_normalisation, 1.0)
     
-    return (ntaxa, scenario, alpha_dist, beta_dist, nsites, diversifying_sites, 
-            nucleotide_matrix, f3x4_matrix, target_normalisation)
+    return (ntaxa, scenario, rate_sampler, nsites, nucleotide_matrix, f3x4_matrix, target_normalisation)
 end
 
-
-
-function run_single_simulation(ntaxa, scenario, alpha_dist, beta_dist, nsites, 
-                              diversifying_sites, nucleotide_matrix, f3x4_matrix, 
-                              target_normalisation)
-    
-    if diversifying_sites > 0
-        return simulate_k_diversifying_sites(ntaxa, scenario, alpha_dist, beta_dist, 
-                                           nsites, diversifying_sites, nucleotide_matrix, 
-                                           f3x4_matrix; target_normalisation=target_normalisation)
+function create_rate_sampler_from_row(row)
+    # Allow direct specification of sampler in Julia code
+    if hasproperty(row, :rate_sampler) && !ismissing(row.rate_sampler)
+        return eval(Meta.parse(String(row.rate_sampler)))
     else
-        return simulate_alignment(ntaxa, scenario, alpha_dist, beta_dist, nsites, 
-                                nucleotide_matrix, f3x4_matrix; 
-                                target_normalisation=target_normalisation)
+        error("CSV must contain 'rate_sampler' column with Julia code specifying the sampler")
     end
+end
+
+function run_single_simulation(ntaxa, scenario, rate_sampler::RateSampler, nsites, 
+                              nucleotide_matrix, f3x4_matrix, target_normalisation)
+    return simulate_alignment(ntaxa, scenario, rate_sampler, nsites, nucleotide_matrix, 
+                            f3x4_matrix; target_normalisation=target_normalisation)
 end
 
 # Constant equal to demo_nucmat for now
