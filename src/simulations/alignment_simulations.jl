@@ -98,16 +98,21 @@ function Base.rand(sampler::DiversifyingSitesSampler, n::Int)
 end
 
 # Constructor functions for convenience
-function UnivariateRateSampler(alpha_dist::Distribution, beta_dist::Distribution)
-    return UnivariateRateSampler(alpha_dist, beta_dist)
-end
-
-function BivariateRateSampler(rate_dist::Distribution)
-    if length(rate_dist) != 2
-        error("Rate distribution must be bivariate")
-    end
-    return BivariateRateSampler(rate_dist)
-end
+# ─────────────────────────────────────────────────────────────────────────────
+# NOTE: The following two methods created infinite recursion and produced
+#       StackOverflowError.  They are removed; the automatically created
+#       default constructors are enough.
+#
+# function UnivariateRateSampler(alpha_dist::Distribution, beta_dist::Distribution)
+#     return UnivariateRateSampler(alpha_dist, beta_dist)
+# end
+#
+# function BivariateRateSampler(rate_dist::Distribution)
+#     if length(rate_dist) != 2
+#         error("Rate distribution must be bivariate")
+#     end
+#     return BivariateRateSampler(rate_dist)
+# end
 
 # Only allow base samplers as base samplers
 function AllSitesSampler(base_sampler::UnivariateRateSampler)
