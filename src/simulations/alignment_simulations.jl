@@ -1,18 +1,4 @@
 # Enhanced SimulationResult to store sampler metadata
-struct SimulationResult 
-    grid::Union{FUBARGrid, Nothing}
-    tree
-    nucs
-    nuc_names
-    alphavec
-    betavec
-    scenario::Union{CoalescenceScenario, Nothing}
-    rate_sampler::Union{RateSampler, Nothing}
-end
-
-function total_branch_length(tree::FelNode) 
-    return sum([n.branchlength for n in getnodelist(tree)]) 
-end
 
 # Abstract type for rate sampling strategies
 abstract type RateSampler <: Sampleable{Univariate, Continuous} end
@@ -36,6 +22,21 @@ struct DiversifyingSitesSampler <: RateSampler
     base_sampler::RateSampler
     diversifying_sites::Int
     total_sites::Int
+end
+
+struct SimulationResult 
+    grid::Union{FUBARGrid, Nothing}
+    tree
+    nucs
+    nuc_names
+    alphavec
+    betavec
+    scenario::Union{CoalescenceScenario, Nothing}
+    rate_sampler::Union{RateSampler, Nothing}
+end
+
+function total_branch_length(tree::FelNode) 
+    return sum([n.branchlength for n in getnodelist(tree)]) 
 end
 
 # Required methods for Sampleable interface
