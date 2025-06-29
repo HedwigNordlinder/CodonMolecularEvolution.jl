@@ -221,8 +221,13 @@ function run_single_fubar_analysis(method::FUBARMethod, grid::FUBARGrid, results
         disable_plotting=true)
 end
 
-# Dummy function for plot_combined_roc_curves (will be overridden by PlotsExt)
-function plot_combined_roc_curves(all_roc_data::Dict{String, Dict{String, Any}}, output_filename::String)
-    println("plot_combined_roc_curves not available without PlotsExt")
-    return nothing
+
+# Dummy function for generate_roc_curves (will be overridden by PlotsExt)
+function generate_roc_curves(input_directory::String; 
+                           results_subfolder::String="results",
+                           verbosity::Int=1,
+                           nthreads::Union{Int,Nothing}=nothing,
+                           output_filename::String="roc_curves")
+    println("generate_roc_curves not available without PlotsExt")
+    return Dict{String, Dict{String, Any}}(), nothing
 end

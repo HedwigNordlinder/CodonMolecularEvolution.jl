@@ -53,7 +53,6 @@ export
     FUBARGrid,
     run_fubar_benchmark,
     generate_roc_curves,
-    plot_combined_roc_curves,
     simulate_alignment,
     simulate_k_diversifying_sites,
     save_simulation_data,

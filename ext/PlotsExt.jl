@@ -489,7 +489,7 @@ function CodonMolecularEvolution.save_tree_report(result::CodonMolecularEvolutio
 end
 
 """
-    generate_roc_curves(input_directory::String; 
+    CodonMolecularEvolution.generate_roc_curves(input_directory::String; 
                        results_subfolder::String="results",
                        verbosity::Int=1,
                        nthreads::Union{Int,Nothing}=nothing,
@@ -515,7 +515,7 @@ This function:
 # Returns
 - `Dict{String, Dict{String, Any}}`: Nested dictionary with ROC data for each directory and method
 """
-function generate_roc_curves(input_directory::String; 
+function CodonMolecularEvolution.generate_roc_curves(input_directory::String; 
                            results_subfolder::String="results",
                            verbosity::Int=1,
                            nthreads::Union{Int,Nothing}=nothing,
@@ -624,7 +624,7 @@ function generate_roc_curves(input_directory::String;
         println("\nGenerating combined ROC plot...")
     end
     
-    combined_plot = CodonMolecularEvolution.plot_combined_roc_curves(all_roc_data, output_filename)
+    combined_plot = plot_combined_roc_curves(all_roc_data, output_filename)
     
     if verbosity > 0
         println("ROC analysis completed!")
@@ -775,11 +775,11 @@ function compute_auc(fpr::Vector{Float64}, tpr::Vector{Float64})
 end
 
 """
-    CodonMolecularEvolution.plot_combined_roc_curves(all_roc_data::Dict{String, Dict{String, Any}}, output_filename::String)
+    plot_combined_roc_curves(all_roc_data::Dict{String, Dict{String, Any}}, output_filename::String)
 
 Create a combined ROC plot showing all methods across all directories.
 """
-function CodonMolecularEvolution.plot_combined_roc_curves(all_roc_data::Dict{String, Dict{String, Any}}, output_filename::String)
+function plot_combined_roc_curves(all_roc_data::Dict{String, Dict{String, Any}}, output_filename::String)
     
     # Collect all methods
     all_methods = Set{String}()
