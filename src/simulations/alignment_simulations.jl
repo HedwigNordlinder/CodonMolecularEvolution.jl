@@ -74,16 +74,38 @@ function Base.rand(sampler::DiversifyingSitesSampler, n::Int)
         if i ∈ diversifying_indices
             # Ensure beta > alpha for diversifying sites
             while beta_vec[i] <= alpha_vec[i]
-                new_alpha, new_beta = rand(sampler.base_sampler, 1)
-                alpha_vec[i] = new_alpha[1]
-                beta_vec[i] = new_beta[1]
+                # Sample directly from the base distributions to avoid recursion
+                if sampler.base_sampler isa UnivariateRateSampler
+                    alpha_vec[i] = rand(sampler.base_sampler.alpha_dist)
+                    beta_vec[i] = rand(sampler.base_sampler.beta_dist)
+                elseif sampler.base_sampler isa BivariateRateSampler
+                    new_rates = rand(sampler.base_sampler.rate_dist)
+                    alpha_vec[i] = new_rates[1]
+                    beta_vec[i] = new_rates[2]
+                else
+                    # For other sampler types, sample individual values
+                    new_alpha, new_beta = rand(sampler.base_sampler, 1)
+                    alpha_vec[i] = new_alpha[1]
+                    beta_vec[i] = new_beta[1]
+                end
             end
         else
             # Ensure alpha >= beta for non-diversifying sites
             while alpha_vec[i] < beta_vec[i]
-                new_alpha, new_beta = rand(sampler.base_sampler, 1)
-                alpha_vec[i] = new_alpha[1]
-                beta_vec[i] = new_beta[1]
+                # Sample directly from the base distributions to avoid recursion
+                if sampler.base_sampler isa UnivariateRateSampler
+                    alpha_vec[i] = rand(sampler.base_sampler.alpha_dist)
+                    beta_vec[i] = rand(sampler.base_sampler.beta_dist)
+                elseif sampler.base_sampler isa BivariateRateSampler
+                    new_rates = rand(sampler.base_sampler.rate_dist)
+                    alpha_vec[i] = new_rates[1]
+                    beta_vec[i] = new_rates[2]
+                else
+                    # For other sampler types, sample individual values
+                    new_alpha, new_beta = rand(sampler.base_sampler, 1)
+                    alpha_vec[i] = new_alpha[1]
+                    beta_vec[i] = new_beta[1]
+                end
             end
         end
     end
