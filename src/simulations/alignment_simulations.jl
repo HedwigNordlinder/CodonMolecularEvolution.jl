@@ -109,11 +109,23 @@ function BivariateRateSampler(rate_dist::Distribution)
     return BivariateRateSampler(rate_dist)
 end
 
-function AllSitesSampler(base_sampler::RateSampler)
+# Only allow base samplers as base samplers
+function AllSitesSampler(base_sampler::UnivariateRateSampler)
     return AllSitesSampler(base_sampler)
 end
 
-function DiversifyingSitesSampler(base_sampler::RateSampler, diversifying_sites::Int, total_sites::Int)
+function AllSitesSampler(base_sampler::BivariateRateSampler)
+    return AllSitesSampler(base_sampler)
+end
+
+function DiversifyingSitesSampler(base_sampler::UnivariateRateSampler, diversifying_sites::Int, total_sites::Int)
+    if diversifying_sites > total_sites
+        error("Number of diversifying sites cannot exceed total sites")
+    end
+    return DiversifyingSitesSampler(base_sampler, diversifying_sites, total_sites)
+end
+
+function DiversifyingSitesSampler(base_sampler::BivariateRateSampler, diversifying_sites::Int, total_sites::Int)
     if diversifying_sites > total_sites
         error("Number of diversifying sites cannot exceed total sites")
     end
