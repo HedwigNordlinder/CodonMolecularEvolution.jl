@@ -77,6 +77,6 @@ export
     load_scenario,
     run_simulation_batch,
     parse_simulation_parameters,
-    create_rate_sampler_from_row
-
+    create_rate_sampler_from_row,
+    collect_global_values
 end

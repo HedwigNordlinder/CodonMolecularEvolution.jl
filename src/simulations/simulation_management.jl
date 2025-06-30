@@ -144,3 +144,163 @@ end
 function save_tree_report(results::SimulationResult, output_filename = nothing) 
     println("Plots.jl and Phylo.jl not loaded, not saving anything")
 end
+"""
+    CodonMolecularEvolution.collect_global_values(parent_directory::String; 
+                                                 results_subfolder::String="results",
+                                                 output_filename::String="global_values.csv",
+                                                 verbosity::Int=1)
+
+Collect global values from .global files across all subdirectories and save to CSV.
+
+# Arguments
+- `parent_directory::String`: Path to the parent directory containing subdirectories
+- `results_subfolder::String="results"`: Name of subfolder containing .global files
+- `output_filename::String="global_values.csv"`: Output CSV filename
+- `verbosity::Int=1`: Control level of output messages
+
+# Description
+This function:
+1. Scans the parent directory for subdirectories
+2. For each subdirectory, looks in the results subfolder for .global files
+3. Extracts the single float value from each .global file
+4. Organizes data by method name (filename without .global extension)
+5. Saves all data to a CSV with format: subfolder_name, method1_value, method2_value, ...
+
+# Returns
+- `DataFrame`: The collected data as a DataFrame
+"""
+function collect_global_values(parent_directory::String; 
+                                                     results_subfolder::String="results",
+                                                     output_filename::String="global_values.csv",
+                                                     verbosity::Int=1)
+    
+    if !isdir(parent_directory)
+        error("Parent directory does not exist: $parent_directory")
+    end
+    
+    # Get all subdirectories
+    subdirs = [d for d in readdir(parent_directory, join=true) if isdir(d)]
+    
+    if isempty(subdirs)
+        error("No subdirectories found in $parent_directory")
+    end
+    
+    if verbosity > 0
+        println("Found $(length(subdirs)) subdirectories to process")
+    end
+    
+    # Dictionary to store all data: method_name => [values...]
+    method_data = Dict{String, Vector{Union{Float64, Missing}}}()
+    subfolder_names = String[]
+    
+    # First pass: collect all method names and subfolder names
+    all_method_names = Set{String}()
+    
+    for subdir in subdirs
+        dirname = basename(subdir)
+        results_dir = joinpath(subdir, results_subfolder)
+        
+        if !isdir(results_dir)
+            if verbosity > 0
+                println("  No results directory found in $dirname")
+            end
+            continue
+        end
+        
+        # Find all .global files
+        global_files = filter(f -> endswith(f, ".global"), readdir(results_dir))
+        
+        if !isempty(global_files)
+            push!(subfolder_names, dirname)
+            
+            for global_file in global_files
+                method_name = replace(global_file, ".global" => "")
+                push!(all_method_names, method_name)
+            end
+        elseif verbosity > 0
+            println("  No .global files found in $dirname")
+        end
+    end
+    
+    if isempty(subfolder_names)
+        error("No valid subdirectories with .global files found")
+    end
+    
+    # Sort method names for consistent column ordering
+    sorted_method_names = sort(collect(all_method_names))
+    
+    if verbosity > 0
+        println("Found methods: $(join(sorted_method_names, ", "))")
+        println("Processing $(length(subfolder_names)) valid subdirectories")
+    end
+    
+    # Initialize data structure
+    for method_name in sorted_method_names
+        method_data[method_name] = Vector{Union{Float64, Missing}}(missing, length(subfolder_names))
+    end
+    
+    # Second pass: collect the actual values
+    for (idx, subdir) in enumerate([joinpath(parent_directory, name) for name in subfolder_names])
+        dirname = basename(subdir)
+        results_dir = joinpath(subdir, results_subfolder)
+        
+        if verbosity > 0
+            println("Processing: $dirname")
+        end
+        
+        # Find all .global files
+        global_files = filter(f -> endswith(f, ".global"), readdir(results_dir))
+        
+        for global_file in global_files
+            method_name = replace(global_file, ".global" => "")
+            global_file_path = joinpath(results_dir, global_file)
+            
+            try
+                # Read the single float from the file
+                content = strip(read(global_file_path, String))
+                value = parse(Float64, content)
+                
+                method_data[method_name][idx] = value
+                
+                if verbosity > 1
+                    println("  $method_name: $value")
+                end
+                
+            catch e
+                if verbosity > 0
+                    println("  ✗ Failed to read $global_file: $(e)")
+                end
+                # Value remains missing
+            end
+        end
+    end
+    
+    # Create DataFrame
+    df_data = Dict{String, Any}()
+    df_data["subfolder"] = subfolder_names
+    
+    for method_name in sorted_method_names
+        df_data[method_name] = method_data[method_name]
+    end
+    
+    df = DataFrame(df_data)
+    
+    # Save to CSV
+    output_path = joinpath(parent_directory, output_filename)
+    CSV.write(output_path, df)
+    
+    if verbosity > 0
+        println("Results saved to: $output_path")
+        println("CSV contains $(nrow(df)) rows and $(ncol(df)) columns")
+        
+        # Show summary of missing values
+        for method_name in sorted_method_names
+            n_missing = sum(ismissing.(method_data[method_name]))
+            if n_missing > 0
+                println("  $method_name: $n_missing missing values")
+            end
+        end
+    end
+    
+    return df
+end
