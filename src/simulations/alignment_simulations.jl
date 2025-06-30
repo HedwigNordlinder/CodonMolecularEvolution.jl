@@ -97,24 +97,6 @@ function Base.rand(sampler::DiversifyingSitesSampler, n::Int)
     return (alpha_vec, beta_vec)
 end
 
-# Constructor functions for convenience
-# ─────────────────────────────────────────────────────────────────────────────
-# NOTE: The following two methods created infinite recursion and produced
-#       StackOverflowError.  They are removed; the automatically created
-#       default constructors are enough.
-#
-# function UnivariateRateSampler(alpha_dist::Distribution, beta_dist::Distribution)
-#     return UnivariateRateSampler(alpha_dist, beta_dist)
-# end
-#
-# function BivariateRateSampler(rate_dist::Distribution)
-#     if length(rate_dist) != 2
-#         error("Rate distribution must be bivariate")
-#     end
-#     return BivariateRateSampler(rate_dist)
-# end
-
-# Only allow base samplers as base samplers
 function AllSitesSampler(base_sampler::UnivariateRateSampler)
     return Base.@invoke AllSitesSampler(
                base_sampler::Union{UnivariateRateSampler,BivariateRateSampler})
@@ -290,7 +272,7 @@ function serialize_sampler_to_dict(sampler::AllSitesSampler)
     return metadata
 end
 
-# Function that computes the total number of expected substitutions under the codon model
+# Function that computes the total number of expected substitutions under the codon model, when α = β = 1
 function compute_total_diversity(res::SimulationResult; nucleotide_matrix = CodonMolecularEvolution.demo_nucmat, f3x4_matrix = CodonMolecularEvolution.demo_f3x4)
     π_eq = MolecularEvolution.F3x4_eq_freqs(f3x4_matrix)
     Q = MolecularEvolution.MG94_F3x4(1.0,1.0,nucleotide_matrix, f3x4_matrix)

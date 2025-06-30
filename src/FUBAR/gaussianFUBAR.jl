@@ -377,6 +377,11 @@ function FUBAR_tabulate_results(method::SKBDIFUBAR,results::BayesianFUBARResults
     if !isnothing(results.suppression_parameters)
         posterior_suppression_probability = sum(results.suppression_parameters .> 0) / length(results.suppression_parameters)
     end
+    
+    open(analysis_name*"_supression.txt","w") do file 
+        write(file, string(posterior_suppression_probability))
+    end
+
     return FUBAR_tabulate_results(DefaultBayesianFUBARMethod(), results,grid, analysis_name = analysis_name, posterior_threshold = posterior_threshold, verbosity = verbosity, exports = exports), posterior_suppression_probability
 end
 
