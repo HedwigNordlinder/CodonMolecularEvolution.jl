@@ -341,10 +341,7 @@ function FUBAR_analysis(method::FIFEFUBAR, grid::FUBARGrid{T};
         # - If α > β (not positive selection): p-value = 0.5
         # - If β > α (potential positive selection): p-value = original p-value / 2
         # This comes from the correct null distribution being a 50:50 mixture of a point mass at 0 and a Chi2(1) distribution
-        # According to GPT 04-mini, we should not do 
-        #site_p_value = [s[2].β_alt > s[2].α_alt ? s[2].p_value / 2 : 0.5 for s in stats]
-        # Instead we should do this
-        site_p_value = [s[2].β_alt > s[2].α_alt ? s[2].p_value / 2 : 1-s[2].p_value / 2 for s in stats]
+        site_p_value = [s[2].β_alt > s[2].α_alt ? s[2].p_value / 2 : 0.5 for s in stats]
     else
         site_p_value = [s[2].p_value for s in stats]
     end
@@ -357,7 +354,7 @@ function FUBAR_analysis(method::FIFEFUBAR, grid::FUBARGrid{T};
     hzero_loglikelihood = [s[2].LL_null for s in stats]
     fitted_rate_hzero = grid.grid_function.([s[2].αβ_null for s in stats])
     
-    fisher_p_value = fisher_method(site_p_value)
+    aggregate_p_value = fisher_method(site_p_value,positive_tail_only)
 
     results = FrequentistFUBARResults{T}(
         site_p_value,
@@ -367,17 +364,77 @@ function FUBAR_analysis(method::FIFEFUBAR, grid::FUBARGrid{T};
         fitted_beta_ha,
         hzero_loglikelihood,
         fitted_rate_hzero,
-        fisher_p_value
+        aggregate_p_value
     )
     df_results = FUBAR_tabulate_results(method,results, analysis_name = analysis_name, exports = exports, disable_plotting = disable_plotting)
     
     return df_results
 end
 
-function fisher_method(p_values::Vector{Float64})
-    test_statistic = -2 * sum(log.(p_values))
-    df = 2 * length(p_values)
-    return 1 - cdf(Chisq(df),test_statistic)
+function fisher_method(p_values::Vector{Float64},positive_tail_only)
+    if !positive_tail_only 
+        test_statistic = -2 * sum(log.(p_values))
+        df = 2 * length(p_values)
+        return 1 - cdf(Chisq(df),test_statistic)
+    else
+        return cursed_method(p_values)
+    end
+
+end
+function cursed_method(p_values::Vector{Float64})
+    n = length(p_values)
+    s = sum(p_values)
+    if n > 50 # Normal approximation
+        test_statistic = (sum(p_values) - 3n/8)/sqrt(5*n/192)
+        return 2*(1-cdf(Normal(0,1),abs(test_statistic)))
+    else
+        return 2*min(1-Sn_cdf(n,s),Sn_cdf(n,s)) # Two sided exact test for small n
+    end
+end
+
+function irwinhall_cdf(m::Integer, y::Real)
+    m < 0 && throw(ArgumentError("m must be non-negative"))
+    # Degenerate (m = 0) ⇒ I₀ = 0 with probability 1
+    if m == 0
+        return y < 0 ? 0.0 : 1.0
+    end
+    y ≤ 0        && return 0.0
+    y ≥ m        && return 1.0
+
+    s = 0.0
+    j_max = floor(Int, y)        # ⌊y⌋
+    for j in 0:j_max
+        s += (-1)^j * binomial(m, j) * (y - j)^m
+    end
+    m_fac = m < 21 ? factorial(m) : factorial(big(m))
+    return s / m_fac
+end
+
+
+"""
+    Sn_cdf(n, x)
+
+CDF  F_{Sₙ}(x) = P(Sₙ ≤ x)  for the sum Sₙ of *n* independent Xᵢ’s.
+Returns a `Float64`.
+"""
+function Sn_cdf(n::Integer, x::Real)
+    n ≥ 0 || throw(ArgumentError("n must be non-negative"))
+    # Trivial cases -----------------------------------------------------------
+    x < 0        && return 0.0
+    n == 0       && return 1.0            # empty sum
+    maxval = n/2                         # atom at n/2
+    x ≥ maxval  && return 1.0
+
+    # Continuous part: mixture over k = 0,…,n−1 -------------------------------
+    acc = 0.0
+    two_pow_n = 2.0^n                    # convert to Float64 for stability
+    for k in 0:n-1
+        m   = n - k                      # # of “uniform” terms
+        y   = 2 * (x - k/2)              # scale/shift into Irwin–Hall domain
+        prob_cont = irwinhall_cdf(m, y)  # P{ (1/2)·IHₘ ≤ x−k/2 }
+        acc += binomial(n, k) * prob_cont
+    end
+    return exp(log(acc) - n * log(2))
 end
 
 function FUBAR_tabulate_results(method::FIFEFUBAR,results::FrequentistFUBARResults; analysis_name = "fife_analysis", exports = false, disable_plotting = false)
