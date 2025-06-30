@@ -397,7 +397,7 @@ function FUBAR_tabulate_results(method::FIFEFUBAR,results::FrequentistFUBARResul
         init_path(analysis_name)
         CSV.write(analysis_name * "_results.csv", df_results)
         open(analysis_name*".global", "w") do file
-            write(file,string(result.alignment_wide_p_value))
+            write(file,string(results.alignment_wide_p_value))
         end
     end
 
