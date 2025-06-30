@@ -287,6 +287,7 @@ struct FrequentistFUBARResults{T} <: FUBARResults
     fitted_beta_ha::Vector{T} # ML estimate of beta under alt hyp
     hzero_loglikelihood::Vector{T}
     fitted_rate_hzero::Vector{T} # ML estimate of transition rate under null hyp
+    alignment_wide_p_value::Union{T, Nothing} # The p-value for an alignment wide test
 end
 struct FIFEFUBAR <: FUBARMethod end
 
@@ -353,6 +354,8 @@ function FUBAR_analysis(method::FIFEFUBAR, grid::FUBARGrid{T};
     hzero_loglikelihood = [s[2].LL_null for s in stats]
     fitted_rate_hzero = grid.grid_function.([s[2].αβ_null for s in stats])
     
+    fisher_p_value = fisher_method(site_p_value)
+
     results = FrequentistFUBARResults{T}(
         site_p_value,
         site_LRS,
@@ -360,14 +363,19 @@ function FUBAR_analysis(method::FIFEFUBAR, grid::FUBARGrid{T};
         fitted_alpha_ha,
         fitted_beta_ha,
         hzero_loglikelihood,
-        fitted_rate_hzero
+        fitted_rate_hzero,
+        fisher_p_value
     )
     df_results = FUBAR_tabulate_results(method,results, analysis_name = analysis_name, exports = exports, disable_plotting = disable_plotting)
     
     return df_results
 end
 
-
+function fisher_method(p_values::Vector{Float64})
+    test_statistic = -2 * sum(log.(p_values))
+    df = 2 * length(p_values)
+    return 1 - cdf(Chisq(df),test_statistic)
+end
 
 function FUBAR_tabulate_results(method::FIFEFUBAR,results::FrequentistFUBARResults; analysis_name = "fife_analysis", exports = false, disable_plotting = false)
     n_sites = length(results.site_p_value)
@@ -388,6 +396,9 @@ function FUBAR_tabulate_results(method::FIFEFUBAR,results::FrequentistFUBARResul
     if exports
         init_path(analysis_name)
         CSV.write(analysis_name * "_results.csv", df_results)
+        open(analysis_name*"_global.txt", "w") do file
+            write(file,string(result.alignment_wide_p_value))
+        end
     end
 
     return df_results
