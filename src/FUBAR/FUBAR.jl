@@ -341,7 +341,10 @@ function FUBAR_analysis(method::FIFEFUBAR, grid::FUBARGrid{T};
         # - If α > β (not positive selection): p-value = 0.5
         # - If β > α (potential positive selection): p-value = original p-value / 2
         # This comes from the correct null distribution being a 50:50 mixture of a point mass at 0 and a Chi2(1) distribution
-        site_p_value = [s[2].β_alt > s[2].α_alt ? s[2].p_value / 2 : 0.5 for s in stats]
+        # According to GPT 04-mini, we should not do 
+        #site_p_value = [s[2].β_alt > s[2].α_alt ? s[2].p_value / 2 : 0.5 for s in stats]
+        # Instead we should do this
+        site_p_value = [s[2].β_alt > s[2].α_alt ? s[2].p_value / 2 : 1-s[2].p_value / 2 for s in stats]
     else
         site_p_value = [s[2].p_value for s in stats]
     end

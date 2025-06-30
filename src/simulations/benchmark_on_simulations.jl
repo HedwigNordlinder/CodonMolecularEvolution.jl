@@ -212,7 +212,7 @@ end
 
 Run a single FUBAR analysis using dispatch. This function dispatches on the method type to call the appropriate FUBAR_analysis function.
 """
-function run_single_fubar_analysis(method::FUBARMethod, grid::FUBARGrid, results_dir::String, method_name::String, verbosity::Int)
+function run_single_fubar_analysis(method::BayesianFUBARMethod, grid::FUBARGrid, results_dir::String, method_name::String, verbosity::Int)
     # This will dispatch to the appropriate FUBAR_analysis method based on the method type
     return FUBAR_analysis(method, grid, 
         analysis_name=joinpath(results_dir, lowercase(method_name)),
@@ -220,7 +220,15 @@ function run_single_fubar_analysis(method::FUBARMethod, grid::FUBARGrid, results
         verbosity=verbosity-1,
         disable_plotting=true)
 end
-
+function run_single_fubar_analysis(method::FIFEFUBAR, grid::FUBARGrid, results_dir::String, method_name::String, verbosity::Int)
+    # This will dispatch to the appropriate FUBAR_analysis method based on the method type
+    return FUBAR_analysis(method, grid, 
+        analysis_name=joinpath(results_dir, lowercase(method_name)),
+        exports=true, 
+        verbosity=verbosity-1,
+        disable_plotting=true,
+        positive_tail_only=true)
+end
 
 # Dummy function for generate_roc_curves (will be overridden by PlotsExt)
 function generate_roc_curves(input_directory::String; 
