@@ -3,34 +3,49 @@ function run_simulation_batch(config_file::String, output_dir::String; resume=fa
     config_df = CSV.read(config_file, DataFrame)
     log_file = joinpath(output_dir, "simulation_log.txt")
     
-    println("Starting batch simulation with $(nrow(config_df)) scenarios using $(Threads.nthreads()) threads...")
+    # Calculate total number of simulations including replicates
+    total_sims = sum(config_df.n_replicates)
+    println("Starting batch simulation with $(nrow(config_df)) scenarios ($(total_sims) total simulations) using $(Threads.nthreads()) threads...")
     
     completed = Threads.Atomic{Int}(0)
-    total = nrow(config_df)
-    
-    # Create a single lock for all file operations
     file_lock = ReentrantLock()
     
+    # Create expanded task list for all replicates
+    tasks = Tuple{Int, Int, String, String}[]  # (row_idx, replicate, scenario_name, full_name)
+    for i in 1:nrow(config_df)
+        row = config_df[i, :]
+        scenario_name = String(row.scenario_name)
+        n_reps = Int(row.n_replicates)
+        
+        for rep in 1:n_reps
+            if n_reps == 1
+                full_name = scenario_name
+            else
+                full_name = "$(scenario_name)_rep$(rep)"
+            end
+            push!(tasks, (i, rep, scenario_name, full_name))
+        end
+    end
+    
     # Thread-safe storage for completed results
-    completed_results = Vector{SimulationResult}(undef, nrow(config_df))
-    completed_names = Vector{String}(undef, nrow(config_df))
-    completion_flags = Vector{Bool}(undef, nrow(config_df))
+    completed_results = Vector{Union{SimulationResult, Nothing}}(nothing, length(tasks))
+    completed_names = Vector{String}(undef, length(tasks))
+    completion_flags = Vector{Bool}(undef, length(tasks))
     fill!(completion_flags, false)
     
     # Multithreaded simulation phase
-    Threads.@threads for i in 1:nrow(config_df)
-        row = config_df[i, :]
-        scenario_name = String(row.scenario_name)
-        scenario_dir = joinpath(output_dir, scenario_name)
+    Threads.@threads for task_idx in 1:length(tasks)
+        row_idx, replicate, scenario_name, full_name = tasks[task_idx]
+        row = config_df[row_idx, :]
+        scenario_dir = joinpath(output_dir, full_name)
         
-        if resume && isdir(scenario_dir) && isfile(joinpath(scenario_dir, "$(scenario_name).nwk"))
+        if resume && isdir(scenario_dir) && isfile(joinpath(scenario_dir, "$(full_name).nwk"))
             Threads.atomic_add!(completed, 1)
-            println("Thread $(Threads.threadid()): Skipping completed scenario: $scenario_name")
-            # Don't set completion_flags[i] = true for skipped scenarios if we want to exclude them from reports
+            println("Thread $(Threads.threadid()): Skipping completed simulation: $full_name")
             continue
         end
         
-        println("Thread $(Threads.threadid()): Running scenario $scenario_name")
+        println("Thread $(Threads.threadid()): Running simulation $full_name")
         
         try
             params = parse_simulation_parameters(row)
@@ -40,17 +55,17 @@ function run_simulation_batch(config_file::String, output_dir::String; resume=fa
             lock(file_lock) do
                 mkpath(scenario_dir)
             end
-            save_simulation_data(result; name=joinpath(scenario_dir, scenario_name))
+            save_simulation_data(result; name=joinpath(scenario_dir, full_name))
             
-            # Store result for report generation (thread-safe since each thread writes to unique index)
+            # Store result for report generation
             if generate_reports
-                completed_results[i] = result
-                completed_names[i] = scenario_name
-                completion_flags[i] = true
+                completed_results[task_idx] = result
+                completed_names[task_idx] = full_name
+                completion_flags[task_idx] = true
             end
             
             # Thread-safe logging
-            log_message = "SUCCESS - $scenario_name (Thread $(Threads.threadid()))\n"
+            log_message = "SUCCESS - $full_name (Thread $(Threads.threadid()))\n"
             lock(file_lock) do
                 open(log_file, "a") do f
                     write(f, log_message)
@@ -58,8 +73,8 @@ function run_simulation_batch(config_file::String, output_dir::String; resume=fa
             end
             
         catch e
-            error_msg = "ERROR - $scenario_name: $e (Thread $(Threads.threadid()))\n"
-            println("Thread $(Threads.threadid()): Error in scenario $scenario_name: $e")
+            error_msg = "ERROR - $full_name: $e (Thread $(Threads.threadid()))\n"
+            println("Thread $(Threads.threadid()): Error in simulation $full_name: $e")
             lock(file_lock) do
                 open(log_file, "a") do f
                     write(f, error_msg)
@@ -68,8 +83,8 @@ function run_simulation_batch(config_file::String, output_dir::String; resume=fa
         end
         
         current_completed = Threads.atomic_add!(completed, 1) + 1
-        if current_completed % 10 == 0 || current_completed == total
-            println("Progress: $current_completed/$total completed")
+        if current_completed % 10 == 0 || current_completed == total_sims
+            println("Progress: $current_completed/$total_sims completed")
         end
     end
     
@@ -79,7 +94,7 @@ function run_simulation_batch(config_file::String, output_dir::String; resume=fa
     if generate_reports
         successful_indices = findall(completion_flags)
         if !isempty(successful_indices)
-            println("Generating tree reports for $(length(successful_indices)) scenarios (single-threaded)...")
+            println("Generating tree reports for $(length(successful_indices)) simulations (single-threaded)...")
             for i in successful_indices
                 result = completed_results[i]
                 name = completed_names[i]
