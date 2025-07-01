@@ -281,5 +281,6 @@ function compute_total_diversity(res::SimulationResult; nucleotide_matrix = Codo
     Q = MolecularEvolution.MG94_F3x4(1.0,1.0,nucleotide_matrix, f3x4_matrix)
     total_substitution_rate = -sum(π_eq .* diag(Q))
     expected_substitutions = total_substitution_rate*total_branch_length(res.tree)
+    # Modify so E[subs] = 1 by dividing Q mat
     return total_substitution_rate, expected_substitutions
 end
