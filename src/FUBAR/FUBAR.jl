@@ -377,10 +377,16 @@ function fisher_method(p_values::Vector{Float64},positive_tail_only)
         df = 2 * length(p_values)
         return 1 - cdf(Chisq(df),test_statistic)
     else
-        return cursed_method(p_values)
+        return even_more_cursed_method(p_values)
     end
 
 end
+
+function even_more_cursed_method(p_values::Vector{Float64})
+    imputed_p_values = [p >= 1/2 ? 1/2 + rand()/2 : p for p in p_values]
+    return fisher_method(p_values,false)
+end
+
 function cursed_method(p_values::Vector{Float64})
     n = length(p_values)
     s = sum(p_values)
