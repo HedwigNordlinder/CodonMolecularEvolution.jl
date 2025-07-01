@@ -23,6 +23,9 @@ struct DiversifyingSitesSampler <: RateSampler
     diversifying_sites::Int
     total_sites::Int
 end
+function DiversifyingSitesSampler(base_sampler::Union{UnivariateRateSampler, BivariateRateSampler}, diversifying_site_share::Float64, total_sites::Int)
+    return DiversifyingSitesSampler(base_sampler, Int(floor(diversifying_site_share*total_sites)),total_sites)
+end
 
 struct SimulationResult 
     grid::Union{FUBARGrid, Nothing}
