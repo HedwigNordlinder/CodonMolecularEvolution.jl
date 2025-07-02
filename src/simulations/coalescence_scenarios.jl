@@ -283,6 +283,9 @@ SeasonalScenario(;
 struct StandardLadderScenario <: CoalescenceScenario
 
 end
+#Placeholders to get the code to run
+function effective_population_size(scenario::StandardLadderScenario, t::Real) return 0.0 end
+function sampling_rate(scenario::StandardLadderScenario, t::Real) return 0.0 end
 
 function effective_population_size(scenario::SeasonalScenario, t::Real)
     # n(t) = exp(sin(t/sin_divisor) * amplitude + baseline_exp)
