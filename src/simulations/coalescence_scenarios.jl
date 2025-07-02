@@ -282,7 +282,7 @@ SeasonalScenario(;
 
 function effective_population_size(scenario::SeasonalScenario, t::Real)
     # n(t) = exp(sin(t/sin_divisor) * amplitude + baseline_exp)
-    return exp(sin(t / scenario.sin_divisor) * scenario.amplitude + scenario.baseline_exp)
+    return exp(cos(t / scenario.sin_divisor) * scenario.amplitude + scenario.baseline_exp)
 end
 
 function sampling_rate(scenario::SeasonalScenario, t::Real)
