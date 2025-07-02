@@ -6,6 +6,7 @@ using PDMats, BenchmarkTools
 using EllipticalSliceSampling
 using KrylovKit
 using JSON3
+using Progress
 abstract type difFUBARGrid end
 struct PlotsExtDummy end
 
