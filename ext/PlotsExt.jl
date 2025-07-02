@@ -465,7 +465,7 @@ function CodonMolecularEvolution.save_tree_report(result::CodonMolecularEvolutio
     # Three rate plots in middle row 
     # Two scenario plots in bottom row
     combined_plot = plot()
-    total_rate, expected_subs_per_site = CodonMolecularEvolution.compute_total_diversity(result)
+    expected_subs_per_site = CodonMolecularEvolution.compute_total_diversity(result)
     if !isnothing(scenario_p1) 
         combined_plot = plot(tree_plot, 
                         scatter_plot, alpha_hist, beta_hist,

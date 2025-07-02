@@ -147,7 +147,8 @@ function simulate_alignment(ntaxa, scenario::CoalescenceScenario, rate_sampler::
     for n in getnodelist(tree)
         n.branchlength *= (target_normalisation / tbl)
     end
-    nucs, nuc_names, tre = sim_alphabeta_seqs(alphavec, betavec, tree, nucleotide_matrix, f3x4_matrix)
+    # I think scale_total_tree_neutral_expected_subs=1 does what we want it to do?
+    nucs, nuc_names, tre = sim_alphabeta_seqs(alphavec, betavec, tree, nucleotide_matrix, f3x4_matrix, scale_total_tree_neutral_expected_subs=1)
     nucs, nuc_names, newick_tre = nucs, nuc_names, newick(tre)
 
     # Conditionally create grid
@@ -213,13 +214,9 @@ function serialize_sampler_to_dict(sampler::UnivariateRateSampler)
     metadata["alpha_distribution"] = string(typeof(sampler.alpha_dist))
     metadata["beta_distribution"] = string(typeof(sampler.beta_dist))
     
-    try
-        metadata["alpha_params"] = params(sampler.alpha_dist)
-        metadata["beta_params"] = params(sampler.beta_dist)
-    catch
-        metadata["alpha_params"] = "unknown"
-        metadata["beta_params"] = "unknown"
-    end
+    metadata["alpha_params"] = Distributions.params(sampler.alpha_dist)
+    metadata["beta_params"] = Distributions.params(sampler.beta_dist)
+
     
     return metadata
 end
@@ -230,7 +227,7 @@ function serialize_sampler_to_dict(sampler::BivariateRateSampler)
     metadata["rate_distribution"] = string(typeof(sampler.rate_dist))
     
     try
-        metadata["rate_params"] = params(sampler.rate_dist)
+        metadata["rate_params"] = Distributions.params(sampler.rate_dist)
     catch
         metadata["rate_params"] = "unknown"
     end
@@ -277,10 +274,18 @@ end
 
 # Function that computes the total number of expected substitutions under the codon model, when α = β = 1
 function compute_total_diversity(res::SimulationResult; nucleotide_matrix = CodonMolecularEvolution.demo_nucmat, f3x4_matrix = CodonMolecularEvolution.demo_f3x4)
+    total_substitution_rate = Q_matrix_normalisation_constant(nucleotide_matrix, f3x4_matrix)
+    expected_substitutions = total_substitution_rate*total_branch_length(res.tree)
+    return expected_substitutions
+end
+# Computes the "normalising constant" that makes a Q matrix have E[substitutions] = 1 under strict neutrality (α = β = 1)
+function Q_matrix_normalisation_constant(nucleotide_matrix, f3x4_matrix)
+    π_eq, Q = π_neutral_Q(nucleotide_matrix, f3x4_matrix)
+    return -sum(π_eq .* diag(Q))
+end
+# Computes the Q matrix and equilibrium distribution under neutrality
+function π_neutral_Q(nucleotide_matrix, f3x4_matrix)
     π_eq = MolecularEvolution.F3x4_eq_freqs(f3x4_matrix)
     Q = MolecularEvolution.MG94_F3x4(1.0,1.0,nucleotide_matrix, f3x4_matrix)
-    total_substitution_rate = -sum(π_eq .* diag(Q))
-    expected_substitutions = total_substitution_rate*total_branch_length(res.tree)
-    # Modify so E[subs] = 1 by dividing Q mat
-    return total_substitution_rate, expected_substitutions
+    return π_eq, Q
 end
