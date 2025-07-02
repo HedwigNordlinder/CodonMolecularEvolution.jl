@@ -279,6 +279,10 @@ SeasonalScenario(;
     baseline_exp=4.0,
     sampling_divisor=100.0
 ) = SeasonalScenario(sin_divisor, amplitude, baseline_exp, sampling_divisor)
+# empty struct to dispatch on
+struct StandardLadderScenario <: CoalescenceScenario
+
+end
 
 function effective_population_size(scenario::SeasonalScenario, t::Real)
     # n(t) = exp(sin(t/sin_divisor) * amplitude + baseline_exp)
@@ -409,6 +413,8 @@ function load_scenario(filename::String)::CoalescenceScenario
             scenario_data.inflection_point,
             scenario_data.sampling_rate
         )
+    elseif scenario_type== "StandardLadderScenario"
+        return StandardLadderScenario()
     else
         error("Unknown scenario type: $scenario_type")
     end

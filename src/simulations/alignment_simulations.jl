@@ -157,6 +157,24 @@ function simulate_alignment(ntaxa, scenario::CoalescenceScenario, rate_sampler::
     return SimulationResult(grid, tre, nucs, nuc_names, alphavec, betavec, scenario, rate_sampler)
 end
 
+function simulate_alignment(ntaxa,scenario::StandardLadderScenario, rate_sampler::RateSampler, nsites, nucleotide_matrix::Array{Float64,2},f3x4_matrix::Array{Float64,2}; target_normalisation=1.0, create_grid = false)
+    alphavec, betavec = rand(rate_sampler, nsites)
+    
+    tree = ladder_tree_sim(ntaxa)
+    tbl = total_branch_length(tree)
+    for n in getnodelist(tree)
+        n.branchlength *= (target_normalisation / tbl)
+    end
+    # I think scale_total_tree_neutral_expected_subs=1 does what we want it to do?
+    nucs, nuc_names, tre = sim_alphabeta_seqs(alphavec, betavec, tree, nucleotide_matrix, f3x4_matrix, scale_total_tree_neutral_expected_subs=target_normalisation)
+    nucs, nuc_names, newick_tre = nucs, nuc_names, newick(tre)
+
+    # Conditionally create grid
+    grid = create_grid ? alphabetagrid(nuc_names, nucs, newick_tre) : nothing
+    
+    return SimulationResult(grid, tre, nucs, nuc_names, alphavec, betavec, scenario, rate_sampler)
+end
+
 function simulate_alignment(ntaxa, Ne, sample_rate, rate_sampler::RateSampler, nsites, nucleotide_matrix::Array{Float64,2}, f3x4_matrix::Array{Float64,2}; target_normalisation=1.0, create_grid=false)
     alphavec, betavec = rand(rate_sampler, nsites)
     
