@@ -148,7 +148,7 @@ function simulate_alignment(ntaxa, scenario::CoalescenceScenario, rate_sampler::
         n.branchlength *= (target_normalisation / tbl)
     end
     # I think scale_total_tree_neutral_expected_subs=1 does what we want it to do?
-    nucs, nuc_names, tre = sim_alphabeta_seqs(alphavec, betavec, tree, nucleotide_matrix, f3x4_matrix, scale_total_tree_neutral_expected_subs=1)
+    nucs, nuc_names, tre = sim_alphabeta_seqs(alphavec, betavec, tree, nucleotide_matrix, f3x4_matrix, scale_total_tree_neutral_expected_subs=target_normalisation)
     nucs, nuc_names, newick_tre = nucs, nuc_names, newick(tre)
 
     # Conditionally create grid
