@@ -33,6 +33,9 @@ function run_simulation_batch(config_file::String, output_dir::String; resume=fa
     completion_flags = Vector{Bool}(undef, length(tasks))
     fill!(completion_flags, false)
     
+    # Create progress bar
+    progress = Progress(total_sims, desc="Simulations: ", showspeed=true)
+    
     # Multithreaded simulation phase
     Threads.@threads for task_idx in 1:length(tasks)
         row_idx, replicate, scenario_name, full_name = tasks[task_idx]
@@ -41,11 +44,9 @@ function run_simulation_batch(config_file::String, output_dir::String; resume=fa
         
         if resume && isdir(scenario_dir) && isfile(joinpath(scenario_dir, "$(full_name).nwk"))
             Threads.atomic_add!(completed, 1)
-            println("Thread $(Threads.threadid()): Skipping completed simulation: $full_name")
+            next!(progress)  # Update progress bar
             continue
         end
-        
-        println("Thread $(Threads.threadid()): Running simulation $full_name")
         
         try
             params = parse_simulation_parameters(row)
@@ -74,7 +75,6 @@ function run_simulation_batch(config_file::String, output_dir::String; resume=fa
             
         catch e
             error_msg = "ERROR - $full_name: $e (Thread $(Threads.threadid()))\n"
-            println("Thread $(Threads.threadid()): Error in simulation $full_name: $e")
             lock(file_lock) do
                 open(log_file, "a") do f
                     write(f, error_msg)
@@ -82,12 +82,13 @@ function run_simulation_batch(config_file::String, output_dir::String; resume=fa
             end
         end
         
-        current_completed = Threads.atomic_add!(completed, 1) + 1
-        if current_completed % 10 == 0 || current_completed == total_sims
-            println("Progress: $current_completed/$total_sims completed")
-        end
+        # Update progress bar (thread-safe)
+        Threads.atomic_add!(completed, 1)
+        next!(progress)
     end
     
+    # Finish progress bar
+    finish!(progress)
     println("Batch simulation complete. Check $log_file for details.")
     
     # Single-threaded report generation phase
@@ -95,6 +96,10 @@ function run_simulation_batch(config_file::String, output_dir::String; resume=fa
         successful_indices = findall(completion_flags)
         if !isempty(successful_indices)
             println("Generating tree reports for $(length(successful_indices)) simulations (single-threaded)...")
+            
+            # Optional: Add progress bar for report generation too
+            report_progress = Progress(length(successful_indices), desc="Reports: ")
+            
             for i in successful_indices
                 result = completed_results[i]
                 name = completed_names[i]
@@ -103,11 +108,14 @@ function run_simulation_batch(config_file::String, output_dir::String; resume=fa
                 
                 try
                     save_tree_report(result, report_filename)
-                    println("Generated report for: $name")
                 catch e
                     println("Error generating report for $name: $e")
                 end
+                
+                next!(report_progress)
             end
+            
+            finish!(report_progress)
             println("Report generation complete.")
         end
     end
