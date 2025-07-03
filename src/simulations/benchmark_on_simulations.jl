@@ -53,7 +53,6 @@ function run_fubar_benchmark(input_directory::String, methods::Vector{<:FUBARMet
     # Initialize log file
     lock(file_lock) do
         open(log_file, "w") do f
-            write(f, "FUBAR Benchmark Log - $(Dates.now())\n")
             write(f, "Input directory: $input_directory\n")
             write(f, "Using $nthreads threads\n")
             write(f, "Methods: $(join([string(typeof(m).name.name) for m in methods], ", "))\n")
@@ -175,7 +174,6 @@ function run_fubar_benchmark(input_directory::String, methods::Vector{<:FUBARMet
     lock(file_lock) do
         open(log_file, "a") do f
             write(f, "\n" * "=" ^ 60 * "\n")
-            write(f, "Benchmark completed at $(Dates.now())\n")
             write(f, "Total tasks completed: $(completed[])\n")
             write(f, "Results saved in '$(results_subfolder)' subfolders\n")
         end
